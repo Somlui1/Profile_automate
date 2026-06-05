@@ -39,7 +39,9 @@ app.add_middleware(
 # Include core REST API router
 app.include_router(api_router, prefix="/api/v1")
 
-frontend_dir = os.path.abspath(os.path.join(backend_dir, "frontend"))
+frontend_dir = os.path.abspath(os.path.join(api_dir, "frontend"))
+if not os.path.exists(os.path.join(frontend_dir, "index.html")):
+    frontend_dir = os.path.abspath(os.path.join(backend_dir, "frontend"))
 
 # Serve frontend single-page dashboard at root URL
 @app.get("/", tags=["Frontend Admin UI"])
