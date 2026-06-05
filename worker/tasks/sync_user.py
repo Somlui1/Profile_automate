@@ -4,6 +4,9 @@ from services.ad_service import ad_service
 # pyrefly: ignore [missing-import]
 from services.papercut_service import papercut_service
 import time
+import logging
+
+logger = logging.getLogger("worker.tasks.sync_user")
 
 def init_context(payload: dict) -> dict:
     req_info = payload.get("requester_info", {})
@@ -77,14 +80,62 @@ def step_ad_create(job_id: str, payload: dict, context: dict):
     else:
         raise Exception("Failed to create AD account")
 
+def step_ad_validate(job_id: str, payload: dict, context: dict):
+    username = context["username"]
+    custom_attrs = context["ad_user_details"].get("custom_attributes") or {}
+    
+    # Construct expected properties based on context and custom attributes
+    expected_props = {
+        "first_name": custom_attrs.get("first_name") or (context["ad_user_details"].get("name_english", "").split()[0] if context["ad_user_details"].get("name_english") else ""),
+        "last_name": custom_attrs.get("last_name") or (" ".join(context["ad_user_details"].get("name_english", "").split()[1:]) if len(context["ad_user_details"].get("name_english", "").split()) > 1 else ""),
+        "display_name": custom_attrs.get("display_name") or (f"{context['ad_user_details']['name_english']} ({context['ad_user_details']['company']})" if context['ad_user_details']['company'] else context['ad_user_details']['name_english']),
+        "description": custom_attrs.get("description") or context["ad_user_details"].get("employee_id"),
+        "office": custom_attrs.get("office") or context["ad_user_details"].get("company"),
+        "telephone_number": custom_attrs.get("telephone_number") or (f"035-350880 ext.{context['ad_user_details']['ext']}" if context['ad_user_details']['ext'] else ""),
+        "email": custom_attrs.get("email") or f"{username}@{context['ad_user_details']['company'].lower() if context['ad_user_details']['company'] else 'company'}.com",
+        "mobile": custom_attrs.get("mobile") or context["ad_user_details"].get("mobile_phone"),
+        "title": custom_attrs.get("title") or context["ad_user_details"].get("position"),
+        "department": custom_attrs.get("department") or context["ad_user_details"].get("department"),
+        "company": custom_attrs.get("company") or context["ad_user_details"].get("company"),
+        "employee_id": custom_attrs.get("employee_id") or context["ad_user_details"].get("employee_id"),
+        "user_principal_name": custom_attrs.get("user_principal_name") or f"{username}@aapico.com",
+        "password_never_expires": custom_attrs.get("password_never_expires", False),
+        "account_disabled": custom_attrs.get("account_disabled", False),
+        "change_password_next_logon": custom_attrs.get("change_password_next_logon", True),
+    }
+    
+    optional_fields = ["street", "post_office_box", "city", "state_province", "zip_postal_code", "country_region", 
+                       "logon_script", "home_phone", "notes", "manager", "groups"]
+    for field in optional_fields:
+        if field in custom_attrs:
+            expected_props[field] = custom_attrs[field]
+            
+    max_retries = 3
+    retry_delay = 5  # seconds
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            success, failures = ad_service.validate_user(username, expected_props)
+            if success:
+                return {"status": "success", "message": "AD Account validation passed successfully. All attributes match."}
+            else:
+                msg = f"AD validation failed on attempt {attempt}/{max_retries}: {', '.join(failures)}"
+                logger.warning(msg)
+                if attempt < max_retries:
+                    time.sleep(retry_delay)
+                else:
+                    raise Exception(f"AD Account validation failed after {max_retries} attempts. Errors: {failures}")
+        except Exception as e:
+            logger.warning(f"AD validation error on attempt {attempt}/{max_retries}: {e}")
+            if attempt < max_retries:
+                time.sleep(retry_delay)
+            else:
+                raise e
+
 def step_pc_sync(job_id: str, payload: dict, context: dict):
     try:
         # Sleep for a moment to let AD replicate if needed
         time.sleep(2)
-        
-        # We don't have sync_user_from_ad in papercut_service currently in the code you showed me,
-        # but you had papercut_service.sync_user_from_ad(username) in user.py before.
-        # So I will assume we should use force_user_sync() as per papercut_service.py logic.
         papercut_service.force_user_sync()
         return {"status": "success", "message": f"Triggered global PaperCut sync"}
     except Exception as e:
@@ -109,6 +160,7 @@ def step_pc_pin(job_id: str, payload: dict, context: dict):
 WORKFLOW_STEPS = [
     {"id": "ad_check", "func": step_ad_check, "name": "Check Active Directory"},
     {"id": "ad_create", "func": step_ad_create, "name": "Create AD Account"},
+    {"id": "ad_validate", "func": step_ad_validate, "name": "Validate AD Account"},
     {"id": "pc_sync", "func": step_pc_sync, "name": "Sync PaperCut Data"},
     {"id": "pc_pin", "func": step_pc_pin, "name": "Set Printer PIN"},
 ]
