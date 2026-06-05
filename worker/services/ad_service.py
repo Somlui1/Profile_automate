@@ -798,17 +798,18 @@ class ActiveDirectoryService:
             if conn:
                 conn.unbind()
 
-    def validate_user(self, sam_account_name: str, expected_properties: dict) -> Tuple[bool, list]:
+    def validate_user(self, sam_account_name: str, expected_properties: dict) -> Tuple[bool, list, list]:
         """
         Validates the AD user properties against the expected ones.
-        Returns a tuple of (bool, List[str]) where the list contains details of any mismatch.
+        Returns a tuple of (bool, List[str], List[str]) where the second list contains passed keys
+        and the third contains details of any mismatch.
         """
         import ssl
         from ldap3 import Tls
         
         if self.mock_mode:
             logger.info(f"[Mock AD] Validating user '{sam_account_name}' - automatically PASS in mock mode.")
-            return True, []
+            return True, list(expected_properties.keys()), []
 
         conn = self._get_connection()
         try:
@@ -862,9 +863,10 @@ class ActiveDirectoryService:
             )
             
             if not conn.entries:
-                return False, [f"User '{sam_account_name}' not found in AD."]
+                return False, [], [f"User '{sam_account_name}' not found in AD."]
                 
             user = conn.entries[0]
+            passes = []
             failures = []
             
             for prop_key, expected_val in expected_properties.items():
@@ -874,18 +876,24 @@ class ActiveDirectoryService:
                     missing_groups = [g for g in expected_groups if g not in actual_groups]
                     if missing_groups:
                         failures.append(f"Groups mismatch: Expected member of {expected_val}, but missing {missing_groups} in AD (AD groups: {actual_groups})")
+                    else:
+                        passes.append(prop_key)
                         
                 elif prop_key == 'password_never_expires':
                     uac = int(user.userAccountControl.value or 0)
                     actual_val = bool(uac & 0x10000)
                     if actual_val != expected_val:
                         failures.append(f"password_never_expires: Expected {expected_val}, but got {actual_val}")
+                    else:
+                        passes.append(prop_key)
                         
                 elif prop_key == 'account_disabled':
                     uac = int(user.userAccountControl.value or 0)
                     actual_val = bool(uac & 0x0002)
                     if actual_val != expected_val:
                         failures.append(f"account_disabled: Expected {expected_val}, but got {actual_val}")
+                    else:
+                        passes.append(prop_key)
                         
                 elif prop_key == 'change_password_next_logon':
                     uac = int(user.userAccountControl.value or 0)
@@ -894,6 +902,8 @@ class ActiveDirectoryService:
                     actual_val = is_pwd_not_set and not (uac & 0x0002)
                     if actual_val != expected_val:
                         failures.append(f"change_password_next_logon: Expected {expected_val}, but got {actual_val}")
+                    else:
+                        passes.append(prop_key)
                         
                 elif prop_key in ldap_mappings:
                     ldap_attr = ldap_mappings[prop_key]
@@ -909,20 +919,26 @@ class ActiveDirectoryService:
                     if prop_key == 'manager' and actual_val:
                         if expected_cmp not in actual_cmp:
                             failures.append(f"manager: Expected manager name '{expected_val}' to be in DN '{actual_val}'")
+                        else:
+                            passes.append(prop_key)
                         continue
                         
                     if expected_val is None or expected_val == "" or expected_val == []:
                         if actual_val:
                             failures.append(f"{prop_key} ({ldap_attr}): Expected empty, but got '{actual_val}'")
+                        else:
+                            passes.append(prop_key)
                     else:
                         if actual_cmp != expected_cmp:
                             failures.append(f"{prop_key} ({ldap_attr}): Expected '{expected_val}', but got '{actual_val}'")
+                        else:
+                            passes.append(prop_key)
             
-            return len(failures) == 0, failures
+            return len(failures) == 0, passes, failures
             
         except Exception as e:
             logger.error(f"Error validating user '{sam_account_name}' in AD: {e}")
-            return False, [f"Error querying AD: {e}"]
+            return False, [], [f"Error querying AD: {e}"]
         finally:
             if conn:
                 conn.unbind()

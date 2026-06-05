@@ -115,9 +115,12 @@ def step_ad_validate(job_id: str, payload: dict, context: dict):
     
     for attempt in range(1, max_retries + 1):
         try:
-            success, failures = ad_service.validate_user(username, expected_props)
+            success, passes, failures = ad_service.validate_user(username, expected_props)
             if success:
-                return {"status": "success", "message": "AD Account validation passed successfully. All attributes match."}
+                from core.database import add_log
+                for p in passes:
+                    add_log(job_id, "ad_validate", "running", f"Verify Pass: {p} matches expected value")
+                return {"status": "success", "message": f"AD Account validation passed successfully. All {len(passes)} attributes match."}
             else:
                 msg = f"AD validation failed on attempt {attempt}/{max_retries}: {', '.join(failures)}"
                 logger.warning(msg)
