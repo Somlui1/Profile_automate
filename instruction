@@ -1,0 +1,26 @@
+
+System Architecture
+[ Web Frontend ]  <-- REST API (JSON) -->  [ Backend API ]  <-- LDAP/LDAPS -->    [ Active Directory ] & [ Papercut API ]
+(React, Vue, etc.)                       (C# .NET, Python, etc.)                  (Domain Controller)      (  printer system )
+
+ฉันต้องการสร้าง Web application สำหรับสร้าง AD user & sync & setting user printer เเบบอัตโนมัติ  ด้วยโครงสร้างเเบบ 3 tier
+
+ระบบมีทั้งหมดหลัก 4 ส่วนคือ 1
+1. web Frontend เป็นหน้าที่ system admin ใช้ interect ในการใช้งานเเละ upload pdf file or pdf url
+2. Backend API เป็นหน้าที่ process data from web frontend and sync data to AD and papercut api
+3. Active Directory เป็นระบบเครือข่ายขององค์กร ใช้สำหรับจัดการ user 
+4. Papercut API เป็นระบบจัดการเครื่องพิมพ์ โดยที่จะ sync user จาก AD เเล้วกำหนด print code ผ่าน papercut api
+
+
+workflow ดังนี้
+
+1. system admin user upload pdf file or pdf url -> parse pdf and validate pdf -> show preview data 
+2. system admin user can verify and correct data from preview data -> after that user can submit request
+3. after submit request -> system check user profile is exists if exists -> system sync data to AD and papercut api -> show status for 
+    - create ad user success -> user is created with OU=newhire and OU=contract
+    - create print code success -> user is created with print code 
+4. send email (this function จะพิจารณาอีกครั้งหลังจากที่อย่างเสร็จสมบูรณ์)
+
+
+
+

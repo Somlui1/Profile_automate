@@ -1,0 +1,42 @@
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files and credentials
+.env
+.env.*
+*.env
+api/.env
+worker/.env
+!.env.example
+
+# IDEs and editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Logs
+*.log
+logs/
+
+# SQLite databases and data folder
+data/
+*.db
+*.db-journal
+*.sqlite3
+
+# Project-specific temporary files
+Output.json
+temp/
+test.html

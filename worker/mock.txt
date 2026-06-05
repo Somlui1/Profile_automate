@@ -1,0 +1,9 @@
+# Redis Mock Data Template for Testing
+# Format: KEY | TYPE | VALUE (JSON string or plain string)
+# Lines starting with # are comments.
+
+rq:queue:sync | list | ["mock-job-001", "mock-job-002"]
+rq:workers | set | ["mock-worker-01"]
+rq:worker:mock-worker-01 | hash | {"name": "mock-worker-01", "state": "idle", "birth_date": "2026-06-05T10:00:00Z"}
+rq:job:mock-job-001 | hash | {"id": "mock-job-001", "status": "finished", "func_name": "tasks.sync_user.run_sync_pipeline", "meta": {"current_step": "pc_pin", "username": "somchai.s"}, "enqueued_at": "2026-06-05T10:00:00Z", "started_at": "2026-06-05T10:00:02Z", "ended_at": "2026-06-05T10:00:05Z"}
+rq:job:mock-job-002 | hash | {"id": "mock-job-002", "status": "failed", "func_name": "tasks.sync_user.run_sync_pipeline", "meta": {"current_step": "ad_create", "username": "somsee.s"}, "enqueued_at": "2026-06-05T10:05:00Z", "started_at": "2026-06-05T10:05:02Z", "ended_at": "2026-06-05T10:05:03Z", "exc_info": "Exception: Failed to create AD account - Duplicate CN found"}

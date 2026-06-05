@@ -1,0 +1,35 @@
+From:	(ENV_MAIL_SENDER)
+Sent:	Friday, May 29, 2026 4:18 PM
+To:	{supervisor_name} #search from AD and Get supervisor.username  > supervisor.username@aapico.com
+Cc:	{{ENV_MAIL_CC}}
+Subject:	New AD Account Created for khon' {name_english} ({company})
+
+Dear Khun @{{supervisor_name}} 
+
+IT dept. would like informed that information as below :
+Login Windows
+Username : {username}
+ Password : {passwrd}
+First logon you must change password
+* Password Policy
+1. Minimum 8 digits
+2. Inclusion of one or more numerical digits (1,2,3,…)
+3. Inclusion of special characters, such as @, #, $
+4. Prohibition of passwords that match the format of username.
+
+---------------------------------------------------------------------------------------------------------------------------
+Email: {username}@{domain}
+ --------------------------------------------------------------------------------------------------------------------------- 
+Internet Access Level:  {format_PDF}
+--------------------------------------------------------------------------------------------------------------------------- 
+Printer Code:  {Printer_code}
+---------------------------------------------------------------------------------------------------------------------------
+ 
+Best regards,
+Wajeepradit Prompan (AH)
+--------------------------------------
+AAPICO Hitech  Public Co., Ltd. 
+99 Moo1, Hitech Industrial Estate,T. Banlane, 
+Bang Pa-in, Ayutthaya 13160
+Ext.1234
+ 
