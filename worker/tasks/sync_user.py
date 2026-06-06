@@ -8,8 +8,32 @@ from services.papercut_service import papercut_service
 
 logger = logging.getLogger("worker.tasks.sync_user")
 
+# Helper to check if a job is cancelled or paused
+def check_job_status(job_id: str, step_id: str) -> bool:
+    job = get_job(job_id)
+    if not job:
+        return True
+        
+    if job["status"] == "cancelled":
+        return False
+        
+    if job["status"] == "paused":
+        while True:
+            time.sleep(2)
+            job = get_job(job_id)
+            if not job or job["status"] == "cancelled":
+                return False
+            if job["status"] == "processing":
+                break
+                
+    return True
+
 # Helper to route to the next task in the pipeline based on workflow_control
 def move_to_next_step(job_id: str, payload: dict, current_step: str):
+    job = get_job(job_id)
+    if job and job["status"] == "cancelled":
+        return
+        
     workflow = payload.get("workflow_control", {})
     task_data = payload.get("task_data", {})
     
@@ -55,6 +79,8 @@ def run_sync_pipeline(job_id: str, payload: dict):
 
 # Step 1: AD Creation Task
 def run_ad_creation_task(job_id: str, payload: dict):
+    if not check_job_status(job_id, "ad_creation"):
+        return
     try:
         update_job(job_id, current_step="ad_creation")
         req_info = payload.get("metadata", {}).get("requester_info", {})
@@ -138,6 +164,8 @@ def run_ad_creation_task(job_id: str, payload: dict):
 
 # Step 2: PaperCut Sync Task
 def run_papercut_task(job_id: str, payload: dict):
+    if not check_job_status(job_id, "papercut_sync"):
+        return
     try:
         update_job(job_id, current_step="papercut_sync")
         ad_profile = payload.get("task_data", {}).get("ad_profile", {})
@@ -171,6 +199,8 @@ def run_papercut_task(job_id: str, payload: dict):
 
 # Step 3: Microsoft 365 License Assignment Task
 def run_m365_license_task(job_id: str, payload: dict):
+    if not check_job_status(job_id, "m365_license"):
+        return
     try:
         update_job(job_id, current_step="m365_license")
         ad_profile = payload.get("task_data", {}).get("ad_profile", {})
@@ -195,6 +225,8 @@ def run_m365_license_task(job_id: str, payload: dict):
 
 # Step 4: Email Notification Task
 def run_send_email_task(job_id: str, payload: dict):
+    if not check_job_status(job_id, "send_email"):
+        return
     try:
         update_job(job_id, current_step="send_email")
         email_profile = payload.get("task_data", {}).get("email_profile", {})

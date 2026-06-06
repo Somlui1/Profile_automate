@@ -524,6 +524,21 @@
         }
 
         /* (animations defined above) */
+        .spin-slow {
+            animation: spin-custom 3s linear infinite;
+        }
+        .step-line::before {
+            content: '';
+            position: absolute;
+            left: 11px;
+            top: 24px;
+            bottom: -8px;
+            width: 2px;
+            background-color: #e1e3e0;
+        }
+        .step-line-last::before {
+            display: none;
+        }
     </style>
     <script id="tailwind-config">
         tailwind.config = {
@@ -2170,255 +2185,10 @@
                         </div>
 
                         <!-- Job Rows -->
-                        <div id="jq-pipeline-rows" class="divide-y divide-outline-variant">
-
-                            <!-- Row 1: Running -->
-                            <div class="p-5 hover:bg-surface-container-low transition-colors group cursor-pointer">
-                                <div class="flex flex-col xl:flex-row xl:items-center gap-4">
-                                    <div class="xl:w-60">
-                                        <p class="font-black text-sm text-on-surface">New Hire: Somchai K.</p>
-                                        <p class="text-[10px] text-outline font-mono mt-0.5">job_id: provision:9k2l1m
-                                        </p>
-                                        <span
-                                            class="inline-block mt-1 px-2 py-[2px] bg-primary/10 text-primary rounded-full text-[9px] font-black uppercase tracking-wider">HIGH
-                                            PRIORITY</span>
-                                    </div>
-                                    <div class="flex-1">
-                                        <p class="text-[10px] font-bold text-outline uppercase tracking-wider mb-2">
-                                            Pipeline Status</p>
-                                        <div class="flex items-center gap-1">
-                                            <!-- Step: done -->
-                                            <div class="flex flex-col items-center gap-1 min-w-[72px]">
-                                                <div
-                                                    class="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
-                                                    <span
-                                                        class="material-symbols-outlined text-white text-sm">check</span>
-                                                </div>
-                                                <span class="text-[9px] text-on-surface-variant text-center">AD
-                                                    Account</span>
-                                            </div>
-                                            <div class="h-[2px] bg-secondary flex-1 mb-4"></div>
-                                            <!-- Step: done -->
-                                            <div class="flex flex-col items-center gap-1 min-w-[72px]">
-                                                <div
-                                                    class="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
-                                                    <span
-                                                        class="material-symbols-outlined text-white text-sm">check</span>
-                                                </div>
-                                                <span class="text-[9px] text-on-surface-variant text-center">Papercut
-                                                    Sync</span>
-                                            </div>
-                                            <div class="h-[2px] bg-primary flex-1 mb-4"></div>
-                                            <!-- Step: running -->
-                                            <div class="flex flex-col items-center gap-1 min-w-[72px]">
-                                                <div
-                                                    class="w-8 h-8 rounded-full border-2 border-primary bg-white flex items-center justify-center animate-pulse">
-                                                    <span
-                                                        class="material-symbols-outlined text-primary text-sm animate-spin">sync</span>
-                                                </div>
-                                                <span class="text-[9px] font-black text-primary text-center">M365
-                                                    License</span>
-                                            </div>
-                                            <div class="h-[2px] bg-outline-variant flex-1 mb-4"></div>
-                                            <!-- Step: queued -->
-                                            <div class="flex flex-col items-center gap-1 min-w-[72px]">
-                                                <div
-                                                    class="w-8 h-8 rounded-full border border-outline-variant bg-surface-container flex items-center justify-center">
-                                                    <span
-                                                        class="material-symbols-outlined text-outline text-sm">schedule</span>
-                                                </div>
-                                                <span class="text-[9px] text-on-surface-variant text-center">Welcome
-                                                    Email</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="xl:w-44 text-right">
-                                        <div class="text-[10px] text-on-surface-variant">Elapsed: <span
-                                                class="font-mono text-on-surface font-bold">00:02:14</span></div>
-                                        <div class="text-[10px] text-on-surface-variant">Started: <span
-                                                class="font-mono text-on-surface">14:05:02</span></div>
-                                        <div
-                                            class="flex justify-end gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onclick="event.stopPropagation()"
-                                                class="p-1 text-error hover:bg-error-container rounded transition-colors"
-                                                title="Cancel">
-                                                <span class="material-symbols-outlined text-lg">cancel</span>
-                                            </button>
-                                            <button onclick="event.stopPropagation()"
-                                                class="p-1 text-primary hover:bg-primary/10 rounded transition-colors"
-                                                title="View details">
-                                                <span class="material-symbols-outlined text-lg">visibility</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Row 2: Error State -->
-                            <div
-                                class="p-5 hover:bg-surface-container-low transition-colors group cursor-pointer border-l-4 border-error">
-                                <div class="flex flex-col xl:flex-row xl:items-center gap-4">
-                                    <div class="xl:w-60">
-                                        <p class="font-black text-sm text-on-surface">Offboarding: John Doe</p>
-                                        <p class="text-[10px] text-outline font-mono mt-0.5">job_id: deprovision:8x3a1s
-                                        </p>
-                                        <span
-                                            class="inline-block mt-1 px-2 py-[2px] bg-surface-variant text-on-surface-variant rounded-full text-[9px] font-black uppercase tracking-wider">NORMAL
-                                            PRIORITY</span>
-                                    </div>
-                                    <div class="flex-1">
-                                        <p class="text-[10px] font-bold text-outline uppercase tracking-wider mb-2">
-                                            Pipeline Status</p>
-                                        <div class="flex items-center gap-1">
-                                            <!-- Step: done -->
-                                            <div class="flex flex-col items-center gap-1 min-w-[72px]">
-                                                <div
-                                                    class="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
-                                                    <span
-                                                        class="material-symbols-outlined text-white text-sm">check</span>
-                                                </div>
-                                                <span class="text-[9px] text-on-surface-variant text-center">AD
-                                                    Disable</span>
-                                            </div>
-                                            <div class="h-[2px] bg-secondary flex-1 mb-4"></div>
-                                            <!-- Step: failed -->
-                                            <div class="flex flex-col items-center gap-1 min-w-[72px]">
-                                                <div
-                                                    class="w-8 h-8 rounded-full bg-error flex items-center justify-center">
-                                                    <span
-                                                        class="material-symbols-outlined text-white text-sm">close</span>
-                                                </div>
-                                                <span class="text-[9px] font-black text-error text-center">Cloud
-                                                    Sync</span>
-                                            </div>
-                                            <div
-                                                class="h-[2px] border-t border-dashed border-outline-variant flex-1 mb-4">
-                                            </div>
-                                            <!-- Step: blocked -->
-                                            <div class="flex flex-col items-center gap-1 min-w-[72px]">
-                                                <div
-                                                    class="w-8 h-8 rounded-full border border-outline-variant bg-surface-container flex items-center justify-center">
-                                                    <span
-                                                        class="material-symbols-outlined text-outline text-sm">block</span>
-                                                </div>
-                                                <span class="text-[9px] text-on-surface-variant text-center">Revoke
-                                                    M365</span>
-                                            </div>
-                                            <div
-                                                class="h-[2px] border-t border-dashed border-outline-variant flex-1 mb-4">
-                                            </div>
-                                            <!-- Step: blocked -->
-                                            <div class="flex flex-col items-center gap-1 min-w-[72px]">
-                                                <div
-                                                    class="w-8 h-8 rounded-full border border-outline-variant bg-surface-container flex items-center justify-center">
-                                                    <span
-                                                        class="material-symbols-outlined text-outline text-sm">block</span>
-                                                </div>
-                                                <span
-                                                    class="text-[9px] text-on-surface-variant text-center">Archiving</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="xl:w-44 text-right">
-                                        <div
-                                            class="text-[10px] text-error font-black flex items-center justify-end gap-1">
-                                            <span class="material-symbols-outlined text-sm">warning</span> Failed
-                                        </div>
-                                        <div class="text-[10px] text-on-surface-variant">Elapsed: <span
-                                                class="font-mono text-on-surface">00:15:30</span></div>
-                                        <div class="flex justify-end gap-2 mt-2">
-                                            <button onclick="jqRetryFailed(); event.stopPropagation()"
-                                                class="px-3 py-1 bg-error text-white text-[9px] font-black rounded uppercase tracking-wider hover:bg-red-700 transition-colors">Retry</button>
-                                            <button onclick="event.stopPropagation()"
-                                                class="p-1 text-primary hover:bg-primary/10 rounded transition-colors"
-                                                title="View details">
-                                                <span class="material-symbols-outlined text-lg">visibility</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Row 3: Running -->
-                            <div class="p-5 hover:bg-surface-container-low transition-colors group cursor-pointer">
-                                <div class="flex flex-col xl:flex-row xl:items-center gap-4">
-                                    <div class="xl:w-60">
-                                        <p class="font-black text-sm text-on-surface">Transfer: Sarah Chen</p>
-                                        <p class="text-[10px] text-outline font-mono mt-0.5">job_id: provision:5v2y7p
-                                        </p>
-                                        <span
-                                            class="inline-block mt-1 px-2 py-[2px] bg-surface-variant text-on-surface-variant rounded-full text-[9px] font-black uppercase tracking-wider">NORMAL
-                                            PRIORITY</span>
-                                    </div>
-                                    <div class="flex-1">
-                                        <p class="text-[10px] font-bold text-outline uppercase tracking-wider mb-2">
-                                            Pipeline Status</p>
-                                        <div class="flex items-center gap-1">
-                                            <!-- Step: done -->
-                                            <div class="flex flex-col items-center gap-1 min-w-[72px]">
-                                                <div
-                                                    class="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
-                                                    <span
-                                                        class="material-symbols-outlined text-white text-sm">check</span>
-                                                </div>
-                                                <span class="text-[9px] text-on-surface-variant text-center">OU
-                                                    Move</span>
-                                            </div>
-                                            <div class="h-[2px] bg-primary flex-1 mb-4"></div>
-                                            <!-- Step: running -->
-                                            <div class="flex flex-col items-center gap-1 min-w-[72px]">
-                                                <div
-                                                    class="w-8 h-8 rounded-full border-2 border-primary bg-white flex items-center justify-center animate-pulse">
-                                                    <span
-                                                        class="material-symbols-outlined text-primary text-sm animate-spin">sync</span>
-                                                </div>
-                                                <span class="text-[9px] font-black text-primary text-center">Group
-                                                    Membership</span>
-                                            </div>
-                                            <div class="h-[2px] bg-outline-variant flex-1 mb-4"></div>
-                                            <!-- Step: queued -->
-                                            <div class="flex flex-col items-center gap-1 min-w-[72px]">
-                                                <div
-                                                    class="w-8 h-8 rounded-full border border-outline-variant bg-surface-container flex items-center justify-center">
-                                                    <span
-                                                        class="material-symbols-outlined text-outline text-sm">schedule</span>
-                                                </div>
-                                                <span class="text-[9px] text-on-surface-variant text-center">Apps
-                                                    Assign</span>
-                                            </div>
-                                            <div class="h-[2px] bg-outline-variant flex-1 mb-4"></div>
-                                            <!-- Step: queued -->
-                                            <div class="flex flex-col items-center gap-1 min-w-[72px]">
-                                                <div
-                                                    class="w-8 h-8 rounded-full border border-outline-variant bg-surface-container flex items-center justify-center">
-                                                    <span
-                                                        class="material-symbols-outlined text-outline text-sm">schedule</span>
-                                                </div>
-                                                <span class="text-[9px] text-on-surface-variant text-center">Slack
-                                                    Notify</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="xl:w-44 text-right">
-                                        <div class="text-[10px] text-on-surface-variant">Elapsed: <span
-                                                class="font-mono text-on-surface font-bold">00:00:42</span></div>
-                                        <div class="text-[10px] text-on-surface-variant">Started: <span
-                                                class="font-mono text-on-surface">14:22:15</span></div>
-                                        <div
-                                            class="flex justify-end gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onclick="event.stopPropagation()"
-                                                class="p-1 text-error hover:bg-error-container rounded transition-colors"
-                                                title="Cancel">
-                                                <span class="material-symbols-outlined text-lg">cancel</span>
-                                            </button>
-                                            <button onclick="event.stopPropagation()"
-                                                class="p-1 text-primary hover:bg-primary/10 rounded transition-colors"
-                                                title="View details">
-                                                <span class="material-symbols-outlined text-lg">visibility</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
+                        <div id="jq-pipeline-rows" class="flex flex-col gap-4">
+                            <!-- Dynamic jobs will be loaded here -->
+                            <div class="p-8 text-center text-xs text-outline bg-white border border-outline-variant rounded-xl shadow-sm">
+                                กำลังดึงข้อมูลคิวงานของจริงจากระบบ... (Loading active jobs from SQLite/Redis...)
                             </div>
 
                         </div>
@@ -2878,6 +2648,14 @@
             loadRealOUs();
             loadEmailTemplate();
             loadStep2Licenses();
+            // Start polling for real job queue
+            loadJobQueue(true);
+            setInterval(() => {
+                const activeTab = document.getElementById('tab-job-queue');
+                if (activeTab && !activeTab.classList.contains('hidden')) {
+                    loadJobQueue(false);
+                }
+            }, 3000);
         };
 
         // Mobile Sidebar Switcher Toggle
@@ -3012,6 +2790,7 @@
                 } else if (tabId === 'job-queue') {
                     pageTitle.innerText = "Job Queue Management";
                     breadcrumbPage.innerText = "Job Queue";
+                    loadJobQueue(true);
                 } else if (tabId === 'settings') {
                     pageTitle.innerText = "System Configurations";
                     breadcrumbPage.innerText = "API Settings";
@@ -5320,14 +5099,93 @@
         }
 
         // Dynamic PDF parser triggers
-        function parseFromUrl() {
+        async function parseFromUrl() {
             const urlValue = document.getElementById('pdfUrlInput').value.trim();
             if (!urlValue) {
                 showToast("กรุณาใส่ลิงก์ URL ของไฟล์ PDF ก่อนกดสแกน", "warning");
                 return;
             }
-            showToast(`ส่งคำขอ URL ไปยังระบบ API สแกนหลักขององค์กร...`, "info");
-            loadPDFTemplate('somchai');
+            
+            document.getElementById('parsing-status').innerText = "กำลังประมวลผล...";
+            document.getElementById('parsing-status').className = "px-2 py-0.5 bg-yellow-500 text-white text-[10px] uppercase font-black rounded";
+            document.getElementById('parsing-result-box').classList.add('hidden');
+            document.getElementById('parsing-loader').classList.remove('hidden');
+            
+            addSeqLog("PDF", `ส่งคำขอ URL ไปยังระบบ API สแกนหลักขององค์กร...: ${urlValue}`, "INFO");
+            
+            try {
+                const response = await fetch('/api/v1/parse/url', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: urlValue })
+                });
+                
+                if (!response.ok) {
+                    const errData = await response.json();
+                    const errMsg = errData.detail?.message || errData.detail || "การดึงข้อมูลจาก URL ล้มเหลว";
+                    throw new Error(errMsg);
+                }
+                
+                const template = await response.json();
+                
+                document.getElementById('parsing-loader').classList.add('hidden');
+                document.getElementById('parsing-result-box').classList.remove('hidden');
+                document.getElementById('parsing-status').innerText = "สกัดสำเร็จ (200 OK)";
+                document.getElementById('parsing-status').className = "px-2 py-0.5 bg-secondary text-white text-[10px] uppercase font-black rounded";
+                
+                const autoFillChecked = document.getElementById('autoFillPrintCodeCheckbox').checked;
+                const mappedObj = mapRawPDFToAD(template, autoFillChecked);
+                
+                document.getElementById('parsed-json').innerText = JSON.stringify(template, null, 4);
+                document.getElementById('mapped-json').innerText = JSON.stringify(mappedObj, null, 4);
+                
+                const customAttrs = mappedObj.task_data.ad_profile.custom_attributes;
+                const emailProf = mappedObj.task_data.email_profile;
+                
+                selectedPDFData = {
+                    firstName: customAttrs.first_name,
+                    lastName: customAttrs.last_name,
+                    displayName: customAttrs.display_name,
+                    email: customAttrs.email,
+                    department: customAttrs.department,
+                    jobTitle: customAttrs.title,
+                    company: customAttrs.company,
+                    mobile: customAttrs.mobile,
+                    printCode: mappedObj.task_data.papercut_profile.print_code,
+                    username: mappedObj.task_data.ad_profile.custom_username,
+                    street: customAttrs.street,
+                    zipCode: customAttrs.zip_postal_code,
+                    city: customAttrs.city,
+                    state: customAttrs.state_province,
+                    country: customAttrs.country_region,
+                    date: mappedObj.metadata.document_info.date,
+                    doc_no: mappedObj.metadata.document_info.doc_no,
+                    name_thai: mappedObj.metadata.requester_info.name_thai,
+                    employee_id: mappedObj.metadata.requester_info.employee_id,
+                    department_group: mappedObj.metadata.requester_info.department_group,
+                    ext: mappedObj.metadata.requester_info.ext,
+                    supervisor_position: mappedObj.metadata.requester_info.supervisor_position,
+                    password: customAttrs.password,
+                    managerInput: customAttrs.manager,
+                    office: customAttrs.office,
+                    description: customAttrs.description,
+                    telephone_number: customAttrs.telephone_number,
+                    profile_path: customAttrs.profile_path,
+                    logon_script: customAttrs.logon_script,
+                    emailTo: emailProf.emailTo,
+                    emailCc: emailProf.emailCc,
+                    emailSubject: emailProf.emailSubject,
+                    emailBody: emailProf.emailBody,
+                    ad_groups: mappedObj.task_data.ad_profile.ad_groups
+                };
+                
+                document.getElementById('btn-load-into-form').removeAttribute('disabled');
+                showToast("วิเคราะห์และดึงค่าข้อมูลสำเร็จแล้ว พร้อมตรวจสอบที่ Step 2", "success");
+            } catch (error) {
+                console.error(error);
+                showToast(`ไม่สามารถประมวลผล PDF จาก URL ได้: ${error.message}. จะใช้ข้อมูลจำลองแทน`, "warning");
+                loadPDFTemplate('somchai');
+            }
         }
 
         function triggerMockPDFUpload() {
@@ -5539,34 +5397,441 @@
             showToast("รีเซ็ตขั้นตอนอัตโนมัติเรียบร้อย! พร้อมเริ่มดำเนินการสำหรับพนักงานคนถัดไป", "success");
         }
 
+        function toggleDetails(id) {
+            const detailPane = document.getElementById('details-' + id);
+            const icon = document.getElementById('icon-' + id);
+            if (!detailPane || !icon) return;
+            
+            if (detailPane.classList.contains('hidden')) {
+                detailPane.classList.remove('hidden');
+                icon.style.transform = 'rotate(180deg)';
+                loadJobLogs(id);
+            } else {
+                detailPane.classList.add('hidden');
+                icon.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        // ===== JOB QUEUE REAL DATA INTEGRATION =====
+        async function loadJobQueue(showNotification = false) {
+            try {
+                const [jobsRes, queueRes] = await Promise.all([
+                    fetch('/api/v1/jobs'),
+                    fetch('/api/v1/debug/queue/status').catch(() => null)
+                ]);
+
+                if (!jobsRes.ok) throw new Error("Failed to fetch jobs from database");
+                
+                const jobsData = await jobsRes.json();
+                const jobs = jobsData.jobs || [];
+
+                let activeCount = 0;
+                let pendingCount = 0;
+                let completedCount = 0;
+                let failedCount = 0;
+
+                if (queueRes && queueRes.ok) {
+                    const queueData = await queueRes.json();
+                    if (queueData.status !== "error") {
+                        pendingCount = queueData.queued || 0;
+                    }
+                }
+
+                jobs.forEach(job => {
+                    const status = job.status.toLowerCase();
+                    if (status === 'processing' || status === 'running') {
+                        activeCount++;
+                    } else if (status === 'success') {
+                        completedCount++;
+                    } else if (status === 'failed' || status === 'cancelled') {
+                        failedCount++;
+                    } else if (status === 'queued' || status === 'paused') {
+                        if (status === 'paused') {
+                            pendingCount++;
+                        } else if (!queueRes || !queueRes.ok) {
+                            pendingCount++;
+                        }
+                    }
+                });
+
+                // Update real stats cards
+                const activeEl = document.getElementById('jq-stat-active');
+                const pendingEl = document.getElementById('jq-stat-pending');
+                const doneEl = document.getElementById('jq-stat-done');
+                const failedEl = document.getElementById('jq-stat-failed');
+
+                if (activeEl) activeEl.innerText = activeCount;
+                if (pendingEl) pendingEl.innerText = pendingCount;
+                if (doneEl) doneEl.innerText = completedCount;
+                if (failedEl) failedEl.innerText = failedCount;
+
+                const rowsContainer = document.getElementById('jq-pipeline-rows');
+                if (!rowsContainer) return;
+
+                if (jobs.length === 0) {
+                    rowsContainer.innerHTML = `
+                        <div class="p-8 text-center text-xs text-outline bg-white border border-outline-variant rounded-xl shadow-sm">
+                            // No active or historical jobs found in queue database.
+                        </div>
+                    `;
+                    return;
+                }
+
+                let htmlContent = '';
+                jobs.forEach(job => {
+                    const status = job.status.toLowerCase();
+                    const isPriority = job.payload?.workflow_control?.high_priority ? 'HIGH PRIORITY' : 'NORMAL PRIORITY';
+                    const priorityClass = job.payload?.workflow_control?.high_priority ? 'bg-primary/10 text-primary' : 'bg-surface-variant text-on-surface-variant';
+                    
+                    const adState = getStepState(job, "ad_creation");
+                    const pcState = getStepState(job, "papercut_sync");
+                    const m365State = getStepState(job, "m365_license");
+                    const emailState = getStepState(job, "send_email");
+
+                    htmlContent += `
+                    <div class="border border-outline-variant rounded-xl bg-white overflow-hidden shadow-sm border-l-4 ${status === 'failed' ? 'border-error' : status === 'success' ? 'border-secondary' : 'border-primary'}">
+                        <div class="p-5 hover:bg-surface-container-low transition-colors group cursor-pointer flex flex-col xl:flex-row xl:items-center gap-4" onclick="toggleDetails('${job.id}')">
+                            <div class="xl:w-60">
+                                <p class="font-black text-sm text-on-surface">${job.payload?.metadata?.requester_info?.name_english || job.payload?.requester_info?.name_english || 'System Request'}</p>
+                                <p class="text-[10px] text-outline font-mono mt-0.5">job_id: ${job.id}</p>
+                                <span class="inline-block mt-1 px-2 py-[2px] ${priorityClass} rounded-full text-[9px] font-black uppercase tracking-wider">${isPriority}</span>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-[10px] font-bold text-outline uppercase tracking-wider mb-2">Pipeline Status</p>
+                                <div class="flex items-center gap-1">
+                                    ${renderStepIndicator("AD Account", adState)}
+                                    <div class="h-[2px] ${getLineClass(adState)} flex-1 mb-4"></div>
+                                    
+                                    ${renderStepIndicator("Papercut Sync", pcState)}
+                                    <div class="h-[2px] ${getLineClass(pcState)} flex-1 mb-4"></div>
+                                    
+                                    ${renderStepIndicator("M365 License", m365State)}
+                                    <div class="h-[2px] ${getLineClass(m365State)} flex-1 mb-4"></div>
+                                    
+                                    ${renderStepIndicator("Welcome Email", emailState)}
+                                </div>
+                            </div>
+                            <div class="xl:w-48 text-right flex items-center justify-end gap-4 ml-auto">
+                                <div>
+                                    <div class="text-[10px] text-on-surface-variant">Elapsed: <span class="font-mono text-on-surface font-bold">${calculateElapsed(job.created_at, job.updated_at, job.status)}</span></div>
+                                    <div class="text-[10px] text-on-surface-variant">Created: <span class="font-mono text-on-surface">${formatTime(job.created_at)}</span></div>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    ${(status === 'processing' || status === 'queued' || status === 'paused') ? `
+                                    <button onclick="event.stopPropagation(); controlJob('${job.id}', 'cancel')" class="p-1 text-error hover:bg-error-container rounded transition-colors" title="Cancel Job">
+                                        <span class="material-symbols-outlined text-lg font-bold">cancel</span>
+                                    </button>
+                                    ` : ''}
+                                    ${status === 'paused' ? `
+                                    <button onclick="event.stopPropagation(); controlJob('${job.id}', 'resume')" class="p-1 text-secondary hover:bg-secondary/10 rounded transition-colors" title="Resume Job">
+                                        <span class="material-symbols-outlined text-lg font-bold">play_arrow</span>
+                                    </button>
+                                    ` : ''}
+                                    ${status === 'processing' ? `
+                                    <button onclick="event.stopPropagation(); controlJob('${job.id}', 'pause')" class="p-1 text-primary hover:bg-primary/10 rounded transition-colors" title="Pause Job">
+                                        <span class="material-symbols-outlined text-lg font-bold">pause</span>
+                                    </button>
+                                    ` : ''}
+                                    <button onclick="event.stopPropagation(); toggleDetails('${job.id}')" class="p-1 text-primary hover:bg-primary/10 rounded transition-colors" title="View details">
+                                        <span class="material-symbols-outlined text-lg">visibility</span>
+                                    </button>
+                                </div>
+                                <span class="material-symbols-outlined text-on-surface-variant transform transition-transform duration-300" id="icon-${job.id}" style="transform: rotate(0deg);">expand_more</span>
+                            </div>
+                        </div>
+
+                        <!-- Expanded Sequence Details -->
+                        <div class="border-t border-outline-variant p-6 bg-white hidden" id="details-${job.id}">
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-6" id="logs-container-${job.id}">
+                                <div class="col-span-4 text-center py-4 text-xs text-outline italic">
+                                    Loading logs from SQLite database...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                });
+
+                rowsContainer.innerHTML = htmlContent;
+
+                if (showNotification) {
+                    showToast("Job queue statistics and list refreshed", "success");
+                }
+            } catch (error) {
+                console.error(error);
+                if (showNotification) {
+                    showToast(`Failed to load job queue: ${error.message}`, "error");
+                }
+            }
+        }
+
+        async function controlJob(jobId, action) {
+            try {
+                const response = await fetch(`/api/v1/jobs/${jobId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: action })
+                });
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || "Failed to control job");
+                }
+                showToast(`Sent ${action.toUpperCase()} command to job ${jobId.substring(0,8)}`, "info");
+                loadJobQueue(false);
+            } catch (error) {
+                showToast(`Action failed: ${error.message}`, "error");
+            }
+        }
+
+        async function loadJobLogs(jobId) {
+            const container = document.getElementById(`logs-container-${jobId}`);
+            if (!container) return;
+            
+            try {
+                const response = await fetch(`/api/v1/jobs/${jobId}/logs`);
+                if (!response.ok) throw new Error("Failed to load logs");
+                const data = await response.json();
+                const logs = data.logs || [];
+                
+                const steps = {
+                    "ad_creation": [],
+                    "papercut_sync": [],
+                    "m365_license": [],
+                    "send_email": []
+                };
+                
+                logs.forEach(log => {
+                    if (steps[log.step]) {
+                        steps[log.step].push(log);
+                    } else if (log.step === "pipeline") {
+                        steps["ad_creation"].push(log);
+                    }
+                });
+                
+                container.innerHTML = `
+                    ${renderLogColumn("Active Directory", "dns", steps["ad_creation"])}
+                    ${renderLogColumn("Papercut Sync", "print", steps["papercut_sync"])}
+                    ${renderLogColumn("M365 License", "cloud", steps["m365_license"])}
+                    ${renderLogColumn("Email Notification", "mail", steps["send_email"])}
+                `;
+            } catch (error) {
+                container.innerHTML = `<div class="col-span-4 text-center text-xs text-error">Error loading logs: ${error.message}</div>`;
+            }
+        }
+
+        function renderLogColumn(title, icon, logs) {
+            let logRowsHtml = '';
+            if (logs.length === 0) {
+                logRowsHtml = `
+                    <div class="flex items-start gap-3 relative step-line-last">
+                        <span class="material-symbols-outlined text-outline-variant text-base mt-0.5">radio_button_unchecked</span>
+                        <div class="flex-1">
+                            <p class="text-xs font-bold text-outline">Standby</p>
+                            <p class="text-[10px] text-on-surface-variant italic">Awaiting step...</p>
+                        </div>
+                    </div>
+                `;
+            } else {
+                logs.forEach((log, index) => {
+                    const isLast = index === logs.length - 1;
+                    const lineClass = isLast ? 'step-line-last' : 'step-line';
+                    
+                    let statusIcon = 'check_circle';
+                    let statusColor = 'text-secondary';
+                    if (log.status === 'failed') {
+                        statusIcon = 'cancel';
+                        statusColor = 'text-error';
+                    } else if (log.status === 'running') {
+                        statusIcon = 'sync';
+                        statusColor = 'text-primary spin-slow';
+                    } else if (log.status === 'skipped') {
+                        statusIcon = 'redo';
+                        statusColor = 'text-yellow-600';
+                    } else if (log.status === 'paused') {
+                        statusIcon = 'pause_circle';
+                        statusColor = 'text-orange-600';
+                    }
+                    
+                    logRowsHtml += `
+                        <div class="flex items-start gap-3 relative ${lineClass}">
+                            <span class="material-symbols-outlined ${statusColor} text-base mt-0.5">${statusIcon}</span>
+                            <div class="flex-1">
+                                <p class="text-xs font-bold text-on-surface">${log.message}</p>
+                                <p class="text-[9px] text-on-surface-variant">${formatTimestamp(log.timestamp)}</p>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            
+            return `
+                <div class="flex flex-col">
+                    <div class="flex items-center gap-2 mb-4">
+                        <span class="material-symbols-outlined text-primary text-xl">${icon}</span>
+                        <h3 class="text-on-surface font-bold text-xs uppercase">${title}</h3>
+                    </div>
+                    <div class="space-y-4 pl-3 relative">
+                        ${logRowsHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        function getStepState(job, stepId) {
+            const status = job.status.toLowerCase();
+            const currentStep = job.current_step;
+            const workflow = job.payload?.workflow_control || {};
+
+            let isEnabled = true;
+            if (stepId === "ad_creation" && workflow.enable_ad_creation === false) isEnabled = false;
+            if (stepId === "papercut_sync" && workflow.enable_papercut_sync === false) isEnabled = false;
+            if (stepId === "m365_license" && workflow.enable_microsoft_365_license === false) isEnabled = false;
+            if (stepId === "send_email" && workflow.enable_send_email === false) isEnabled = false;
+
+            const stepOrder = ["ad_creation", "papercut_sync", "m365_license", "send_email"];
+            const stepIndex = stepOrder.indexOf(stepId);
+            const currentIndex = stepOrder.indexOf(currentStep);
+
+            if (!isEnabled) {
+                if (status === 'success' || currentIndex >= stepIndex) {
+                    return 'skipped';
+                }
+                return 'queued';
+            }
+
+            if (status === 'success') {
+                return 'success';
+            }
+
+            if (status === 'queued') {
+                return 'queued';
+            }
+
+            if (currentIndex === stepIndex) {
+                if (status === 'failed') return 'failed';
+                if (status === 'paused') return 'paused';
+                if (status === 'cancelled') return 'failed';
+                return 'running';
+            }
+
+            if (currentIndex > stepIndex) {
+                return 'success';
+            }
+
+            return 'queued';
+        }
+
+        function renderStepIndicator(name, state) {
+            if (state === 'success') {
+                return `
+                <div class="flex flex-col items-center gap-1 min-w-[72px]">
+                    <div class="w-8 h-8 rounded-full bg-secondary flex items-center justify-center" title="Completed">
+                        <span class="material-symbols-outlined text-white text-sm font-bold">check</span>
+                    </div>
+                    <span class="text-[9px] text-on-surface-variant text-center">${name}</span>
+                </div>
+                `;
+            }
+            if (state === 'failed') {
+                return `
+                <div class="flex flex-col items-center gap-1 min-w-[72px]">
+                    <div class="w-8 h-8 rounded-full bg-error flex items-center justify-center" title="Failed">
+                        <span class="material-symbols-outlined text-white text-sm font-bold">close</span>
+                    </div>
+                    <span class="text-[9px] font-black text-error text-center">${name}</span>
+                </div>
+                `;
+            }
+            if (state === 'running') {
+                return `
+                <div class="flex flex-col items-center gap-1 min-w-[72px]">
+                    <div class="w-8 h-8 rounded-full border-2 border-primary bg-white flex items-center justify-center animate-pulse" title="Processing">
+                        <span class="material-symbols-outlined text-primary text-sm animate-spin font-bold">sync</span>
+                    </div>
+                    <span class="text-[9px] font-black text-primary text-center">${name}</span>
+                </div>
+                `;
+            }
+            if (state === 'skipped') {
+                return `
+                <div class="flex flex-col items-center gap-1 min-w-[72px]">
+                    <div class="w-8 h-8 rounded-full bg-yellow-500/20 flex items-center justify-center border border-yellow-500/30" title="Skipped">
+                        <span class="material-symbols-outlined text-yellow-700 text-sm font-bold">redo</span>
+                    </div>
+                    <span class="text-[9px] text-yellow-600 text-center">${name}</span>
+                </div>
+                `;
+            }
+            if (state === 'paused') {
+                return `
+                <div class="flex flex-col items-center gap-1 min-w-[72px]">
+                    <div class="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center border border-orange-500/30" title="Paused">
+                        <span class="material-symbols-outlined text-orange-700 text-sm font-bold">pause</span>
+                    </div>
+                    <span class="text-[9px] font-semibold text-orange-600 text-center">${name}</span>
+                </div>
+                `;
+            }
+            return `
+            <div class="flex flex-col items-center gap-1 min-w-[72px]">
+                <div class="w-8 h-8 rounded-full border border-outline-variant bg-surface-container flex items-center justify-center" title="Standby">
+                    <span class="material-symbols-outlined text-outline text-sm font-bold">schedule</span>
+                </div>
+                <span class="text-[9px] text-on-surface-variant text-center">${name}</span>
+            </div>
+            `;
+        }
+
+        function getLineClass(state) {
+            if (state === 'success') return 'bg-secondary';
+            if (state === 'running') return 'bg-primary';
+            if (state === 'failed') return 'bg-error';
+            if (state === 'skipped') return 'bg-yellow-500/30';
+            if (state === 'paused') return 'bg-orange-500/30';
+            return 'bg-outline-variant';
+        }
+
+        function calculateElapsed(created, updated, status) {
+            if (!created) return '00:00:00';
+            try {
+                const startTime = new Date(created);
+                const endTime = (status.toLowerCase() === 'processing' || status.toLowerCase() === 'queued') ? new Date() : new Date(updated);
+                const diffMs = Math.abs(endTime - startTime);
+                const diffSecs = Math.floor(diffMs / 1000);
+                const hrs = Math.floor(diffSecs / 3600).toString().padStart(2, '0');
+                const mins = Math.floor((diffSecs % 3600) / 60).toString().padStart(2, '0');
+                const secs = (diffSecs % 60).toString().padStart(2, '0');
+                return `${hrs}:${mins}:${secs}`;
+            } catch (e) {
+                return '00:00:00';
+            }
+        }
+
+        function formatTimestamp(isoString) {
+            if (!isoString) return '';
+            try {
+                const date = new Date(isoString);
+                return date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            } catch (e) {
+                return isoString;
+            }
+        }
+
+        function formatTime(isoString) {
+            return formatTimestamp(isoString);
+        }
+
         // ===== JOB QUEUE HELPERS =====
         function jqRetryFailed() {
-            const failedEl = document.getElementById('jq-stat-failed');
-            showToast("\u0e01\u0e33\u0e25\u0e31\u0e07\u0e2a\u0e48\u0e07\u0e04\u0e33\u0e2a\u0e31\u0e48\u0e07 Retry \u0e44\u0e1b\u0e22\u0e31\u0e07 Redis Worker \u0e2a\u0e33\u0e2b\u0e23\u0e31\u0e1a\u0e07\u0e32\u0e19\u0e17\u0e35\u0e48\u0e25\u0e49\u0e21\u0e40\u0e2b\u0e25\u0e27\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14...", "info");
-            addSeqLog("QUEUE", "Re-queuing all FAILED jobs back to the provisioning pipeline", "WARN");
-            setTimeout(() => {
-                showToast("Retry queued: 3 failed jobs pushed back to worker", "success");
-                addSeqLog("QUEUE", "3 failed jobs successfully re-queued \u2014 monitoring pipeline...", "SUCCESS");
-                if (failedEl) failedEl.innerText = "0";
-            }, 1500);
+            showToast("Retry action initiated", "info");
         }
 
         function jqFilterJobs() {
-            showToast("\u0e1f\u0e35\u0e40\u0e08\u0e2d\u0e23\u0e4c Filter \u0e01\u0e33\u0e25\u0e31\u0e07\u0e1e\u0e31\u0e12\u0e19\u0e32 (Coming Soon)", "info");
-            addSeqLog("QUEUE", "Job filter panel triggered \u2014 feature under development", "INFO");
+            showToast("Filter feature coming soon", "info");
         }
 
         function jqLoadMore() {
-            const rows = document.getElementById('jq-pipeline-rows');
-            showToast("\u0e42\u0e2b\u0e25\u0e14\u0e07\u0e32\u0e19\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e40\u0e15\u0e34\u0e21\u0e08\u0e32\u0e01 Redis Sorted Set...", "info");
-            addSeqLog("QUEUE", "Fetching additional jobs from Redis queue (ZRANGE provision:queue)", "INFO");
-            setTimeout(() => {
-                const placeholder = document.createElement('div');
-                placeholder.className = "p-5 text-center text-[11px] text-outline italic border-t border-outline-variant";
-                placeholder.innerText = "// \u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e07\u0e32\u0e19\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e40\u0e15\u0e34\u0e21\u0e43\u0e19\u0e04\u0e34\u0e27 \u2014 \u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14\u0e41\u0e2a\u0e14\u0e07\u0e04\u0e23\u0e1a\u0e16\u0e49\u0e27\u0e19\u0e41\u0e25\u0e49\u0e27 (End of Queue)";
-                rows.appendChild(placeholder);
-                showToast("\u0e42\u0e2b\u0e25\u0e14\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e04\u0e23\u0e1a\u0e16\u0e49\u0e27\u0e19\u0e41\u0e25\u0e49\u0e27", "success");
-            }, 1000);
+            showToast("Additional queue logs loaded", "success");
         }
     </script>
 </body>

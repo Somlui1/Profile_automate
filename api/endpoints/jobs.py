@@ -61,23 +61,27 @@ def update_job_action(job_id: str, payload: JobActionRequest):
         raise HTTPException(status_code=404, detail="Job not found")
         
     action = payload.action.lower()
+    step_name = job.get("current_step") or "pipeline"
     
     if action == "pause":
         if job["status"] not in ["queued", "processing"]:
             raise HTTPException(status_code=400, detail=f"Cannot pause job in {job['status']} state")
         update_job(job_id, status="paused")
+        add_log(job_id, step_name, "paused", "งานถูกหยุดชั่วคราวโดยผู้ดูแลระบบ (Job paused by admin)")
         return {"status": "paused"}
         
     elif action == "resume":
         if job["status"] != "paused":
             raise HTTPException(status_code=400, detail=f"Cannot resume job in {job['status']} state")
         update_job(job_id, status="processing")
+        add_log(job_id, step_name, "running", "งานถูกดำเนินการต่อโดยผู้ดูแลระบบ (Job resumed by admin)")
         return {"status": "processing"}
         
     elif action == "cancel":
         if job["status"] in ["success", "failed", "cancelled"]:
             raise HTTPException(status_code=400, detail=f"Cannot cancel job in {job['status']} state")
         update_job(job_id, status="cancelled")
+        add_log(job_id, step_name, "failed", "งานถูกยกเลิกโดยผู้ดูแลระบบ (Job cancelled by admin)")
         return {"status": "cancelled"}
         
     else:

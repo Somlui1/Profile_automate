@@ -123,29 +123,21 @@ def verify_format(text: str) -> Tuple[bool, List[str]]:
         "แผนก / Department",
         "เบอร์ภายใน / Ext.",
         "เบอร์มือถือ / Mobile Phone",
-        "ชื่อหัวหน้า / Supervisor",
-        "ที่อยู่ / Address",
-        "(ตามทะเบียนบ้าน)",
-        "รหัสไปรษณีย์"
-    ]
-    for field in required_requester_fields:
-        if field not in text:
-            errors.append(f"Missing requester field label: '{field}'")
-            
+            ]
     # 3. Verify specific request numbered items
     required_request_items = [
-        "1.User ID",
-        "2.Email",
-        "3.Internet",
-        "4.Telephone",
-        "5.Printer"
+        (r"\d+\s*\.?\s*User\s*ID", "User ID"),
+        (r"\d+\s*\.?\s*Email", "Email"),
+        (r"\d+\s*\.?\s*Internet", "Internet"),
+        (r"\d+\s*\.?\s*Telephone", "Telephone"),
+        (r"\d+\s*\.?\s*Printer", "Printer")
     ]
-    for item in required_request_items:
-        if item not in text:
-            errors.append(f"Missing request option item label: '{item}'")
+    for pattern, name in required_request_items:
+        if not re.search(pattern, text, re.IGNORECASE):
+            errors.append(f"Missing request option item label: '{name}'")
             
     return len(errors) == 0, errors
-
+ 
 def parse_text(text: str) -> Dict[str, Any]:
     """
     Parses key-value details from the verified PDF text.
@@ -156,10 +148,10 @@ def parse_text(text: str) -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: Nested dictionary matching the output JSON schema.
     """
-    parts = text.split("ข้อมูลการขอใช้ / Request Information")
+    parts = re.split(r"ข้อมูลการขอใช้\s*/\s*Request\s*Information", text, flags=re.IGNORECASE)
     request_section_text = parts[1] if len(parts) > 1 else ""
     
-    req_parts = parts[0].split("ข้อมูลผู้ขอใช้ / Requester Information")
+    req_parts = re.split(r"ข้อมูลผู้ขอใช้\s*/\s*Requester\s*Information", parts[0], flags=re.IGNORECASE)
     header_section_text = req_parts[0]
     requester_section_text = req_parts[1] if len(req_parts) > 1 else ""
     
@@ -202,43 +194,43 @@ def parse_text(text: str) -> Dict[str, Any]:
             if m:
                 company_val = m.group(1).strip()
                 
-        if "ชื่อ - สกุล(ไทย)" in line:
-            m = re.search(r"ชื่อ - สกุล\(ไทย\)\s+(.*?)\s+Name-Surname \(English\)\s+(.*)", line)
+        if "ชื่อ - สกุล(ไทย)" in line or "ชื่อ-สกุล" in line:
+            m = re.search(r"(?:ชื่อ\s*-\s*สกุล\(ไทย\)|ชื่อ\s*-\s*สกุล)\s*(.*?)\s+Name-Surname \(English\)\s+(.*)", line, re.IGNORECASE)
             if m:
                 name_thai_val = m.group(1).strip()
                 name_eng_val = m.group(2).strip()
                 
-        if "รหัสพนักงาน / Employee ID" in line:
-            m = re.search(r"รหัสพนักงาน / Employee ID\s+(.*?)\s+ตำแหน่ง / Position\s+(.*)", line)
+        if "รหัสพนักงาน / Employee ID" in line or "รหัสพนักงาน" in line:
+            m = re.search(r"(?:รหัสพนักงาน\s*/\s*Employee ID|รหัสพนักงาน)\s*(.*?)\s+ตำแหน่ง / Position\s+(.*)", line, re.IGNORECASE)
             if m:
                 emp_id_val = m.group(1).strip()
                 position_val = m.group(2).strip()
                 
         if "ฝ่าย" in line and "แผนก / Department" in line:
-            m = re.search(r"ฝ่าย\s+(.*?)\s+แผนก / Department\s+(.*)", line)
+            m = re.search(r"ฝ่าย\s+(.*?)\s+แผนก\s*/\s*Department\s+(.*)", line, re.IGNORECASE)
             if m:
                 dept_group_val = m.group(1).strip()
                 dept_val = m.group(2).strip()
                 
-        if "เบอร์ภายใน / Ext." in line:
-            m = re.search(r"เบอร์ภายใน / Ext\.\s+(.*?)\s+เบอร์มือถือ / Mobile Phone\s+(.*)", line)
+        if "เบอร์ภายใน / Ext." in line or "เบอร์ภายใน" in line:
+            m = re.search(r"(?:เบอร์ภายใน\s*/\s*Ext\.|เบอร์ภายใน)\s*(.*?)\s+เบอร์มือถือ / Mobile Phone\s+(.*)", line, re.IGNORECASE)
             if m:
                 ext_val = m.group(1).strip()
                 mobile_val = m.group(2).strip()
                 
-        if "ชื่อหัวหน้า / Supervisor" in line:
-            m = re.search(r"ชื่อหัวหน้า / Supervisor\s+(.*?)\s+ตำแหน่ง / Position\s+(.*)", line)
+        if "ชื่อหัวหน้า / Supervisor" in line or "ชื่อหัวหน้า" in line:
+            m = re.search(r"(?:ชื่อหัวหน้า\s*/\s*Supervisor|ชื่อหัวหน้า)\s*(.*?)\s+ตำแหน่ง / Position\s+(.*)", line, re.IGNORECASE)
             if m:
                 supervisor_val = m.group(1).strip()
                 supervisor_pos_val = m.group(2).strip()
                 
-        if "ที่อยู่ / Address" in line:
-            m = re.search(r"ที่อยู่ / Address\s+(.*)", line)
+        if "ที่อยู่ / Address" in line or "ที่อยู่" in line:
+            m = re.search(r"(?:ที่อยู่\s*/\s*Address|ที่อยู่)\s*(.*)", line, re.IGNORECASE)
             if m:
                 address_val = m.group(1).strip()
                 
-        if "(ตามทะเบียนบ้าน)" in line:
-            m = re.search(r"\(ตามทะเบียนบ้าน\)\s+(.*?)\s+รหัสไปรษณีย์\s+(\d+)", line)
+        if "(ตามทะเบียนบ้าน)" in line or "ตามทะเบียนบ้าน" in line:
+            m = re.search(r"(?:\(ตามทะเบียนบ้าน\)|ตามทะเบียนบ้าน)\s*(.*?)\s+รหัสไปรษณีย์\s+(\d+)", line, re.IGNORECASE)
             if m:
                 addr2 = m.group(1).strip()
                 address_val = re.sub(r'\s+', ' ', f"{address_val} {addr2}").strip()
@@ -248,25 +240,25 @@ def parse_text(text: str) -> Dict[str, Any]:
     req_text_clean = "\n".join([l.strip() for l in request_section_text.splitlines() if l.strip()])
     
     user_id_reason = ""
-    user_id_match = re.search(r"1\.User ID\s+เหตุผล\s*:\s*(.*?)(?=\s*2\.Email|\s*$)", req_text_clean, re.DOTALL)
+    user_id_match = re.search(r"\d+\s*\.?\s*User\s*ID\s+เหตุผล\s*:\s*(.*?)(?=\s*\d+\s*\.?\s*[a-zA-Z]|\s*$)", req_text_clean, re.DOTALL | re.IGNORECASE)
     if user_id_match:
         user_id_reason = user_id_match.group(1).strip()
         
     email_reason = ""
-    email_match = re.search(r"2\.Email\s+เหตุผล\s*:\s*(.*?)(?=\s*3\.Internet|\s*$)", req_text_clean, re.DOTALL)
+    email_match = re.search(r"\d+\s*\.?\s*Email\s+เหตุผล\s*:\s*(.*?)(?=\s*\d+\s*\.?\s*[a-zA-Z]|\s*$)", req_text_clean, re.DOTALL | re.IGNORECASE)
     if email_match:
         email_reason = email_match.group(1).strip()
         
     internet_level = ""
     internet_reason = ""
-    internet_match = re.search(r"3\.Internet\s+ระดับ\s*:\s*(.*?)\s*\n\s*เหตุผล\s*:\s*(.*?)(?=\s*4\.Telephone|\s*$)", req_text_clean, re.DOTALL)
+    internet_match = re.search(r"\d+\s*\.?\s*Internet\s+ระดับ\s*:\s*(.*?)\s*\n\s*เหตุผล\s*:\s*(.*?)(?=\s*\d+\s*\.?\s*[a-zA-Z]|\s*$)", req_text_clean, re.DOTALL | re.IGNORECASE)
     if internet_match:
         internet_level = internet_match.group(1).strip()
         internet_reason = internet_match.group(2).strip()
         
     phone_type = ""
     phone_reason = ""
-    phone_match = re.search(r"4\.Telephone\s+ประเภท\s*:\s*(.*?)\s*\n\s*เหตุผล\s*:\s*(.*?)(?=\s*5\.Printer|\s*$)", req_text_clean, re.DOTALL)
+    phone_match = re.search(r"\d+\s*\.?\s*Telephone\s+ประเภท\s*:\s*(.*?)\s*\n\s*เหตุผล\s*:\s*(.*?)(?=\s*\d+\s*\.?\s*[a-zA-Z]|\s*$)", req_text_clean, re.DOTALL | re.IGNORECASE)
     if phone_match:
         phone_type = phone_match.group(1).strip()
         phone_reason = phone_match.group(2).strip()
@@ -274,12 +266,12 @@ def parse_text(text: str) -> Dict[str, Any]:
     printer_model = ""
     printer_type = ""
     printer_reason = ""
-    printer_match = re.search(r"5\.Printer\s+รุ่น\s*:\s*(.*?)\s+ประเภท\s*:\s*(.*?)\s*\n\s*เหตุผล\s*:\s*(.*?)$", req_text_clean, re.DOTALL)
+    printer_match = re.search(r"\d+\s*\.?\s*Printer\s+รุ่น\s*:\s*(.*?)\s+ประเภท\s*:\s*(.*?)\s*\n\s*เหตุผล\s*:\s*(.*?)$", req_text_clean, re.DOTALL | re.IGNORECASE)
     if printer_match:
         printer_model = printer_match.group(1).strip()
         printer_type = printer_match.group(2).strip()
         printer_reason = printer_match.group(3).strip()
-        
+    
     return {
         "document_info": {
             "date": date_val,

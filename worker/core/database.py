@@ -9,7 +9,7 @@ from core.config import settings
 def get_db_connection():
     # Ensure data directory exists
     os.makedirs(os.path.dirname(settings.DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(settings.DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(settings.DB_PATH, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 

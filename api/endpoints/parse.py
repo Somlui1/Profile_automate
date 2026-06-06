@@ -80,6 +80,8 @@ def parse_pdf_url(payload: URLRequest):
         parsed_data = parse_text(text)
         return parsed_data
         
+    except HTTPException as he:
+        raise he
     except PDFParsingError as pe:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

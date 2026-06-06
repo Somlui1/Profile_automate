@@ -1,0 +1,22 @@
+ข้อมูลการขอใช้ทรัพยากรด้านเทคโนโลยีสารสนเทศ
+Information Technology Resource
+วันที่ / Date :29/05/26 เลขที่เอกสาร / Doc. No. : EF-26050055-J8
+ข้อมูลผู้ขอใช้ / Requester Information
+บริษัท / Company :AH
+ชื่อ - สกุล(ไทย)  ว่าที่ ร.ต.หญิง มณฑิตา สีสา  Name-Surname (English)  Acting Sub. Lt. Montita Seesa
+รหัสพนักงาน / Employee ID  10003079 ตำแหน่ง / Position  Accounting officer
+ฝ่าย  Accounting แผนก / Department  Accounting
+เบอร์ภายใน / Ext.  2213 เบอร์มือถือ / Mobile Phone  (095) 393-2765
+ชื่อหัวหน้า / Supervisor  Kittima Sukpeng ตำแหน่ง / Position  Section Manager
+ที่อยู่ / Address  18/4 หมู่ที่ 2    ตำบลบางนมโค      อำเภอเสนา   
+(ตามทะเบียนบ้าน)  จังหวัดพระนครศรีอยุธยา      รหัสไปรษณีย์  13110
+ข้อมูลการขอใช้ / Request Information
+ 1.User ID เหตุผล : เข้าใช้งานระบบเครือข่ายของกลุ่มบริษัทอาปิโก
+ 2.AERP ID กลุ่มฟังก์ชัน :Staff group
+ 3.Email เหตุผล : เพื่อติดต่อสื่อสารทั้งภายในและภายนอกองค์กร
+ 4.Internet ระดับ : Level C
+เหตุผล : เข้าใช้งานอินเทอร์เน็ตได้เฉพาะเว็บไซต์งานที่ได้ถูกระบุไว้เท่านั้น
+ 5.Telephone ประเภท : Domestic
+เหตุผล : ติดต่อกับบุคลภายนอกเกี่ยวข้องกับงาน
+ 6.Printer รุ่น :B/W Print ประเภท  : Black-White
+เหตุผล : พิมพ์เอกสาร สำเนาเอกสาร สำหรับเครื่องพิมพ์ในระบบเครือข่าย การแสกนเอกสารทั้งสีและขาวดำสามารถใช้งานได้เลยโดยไม่ต้องมีรหัส
