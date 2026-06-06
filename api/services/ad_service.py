@@ -105,17 +105,28 @@ class ActiveDirectoryService:
                 f"Failed to connect to any LDAP Server ({hosts_str}): {str(e)}"
             )
 
-    def check_user_exists(self, sam_account_name: str) -> bool:
+    def check_user_exists(self, query: str, exact: bool = False) -> bool:
         """
-        Queries Active Directory to check if a user with the given sAMAccountName exists.
+        Check if a user exists in Active Directory.
+        If exact=True, matches sAMAccountName exactly (e.g. for checking username taken).
+        If exact=False, matches sAMAccountName, displayName, cn, mail, or anr (e.g. for checking manager exists).
         """
         if self.mock_mode:
-            # For testing, assume 'existing_user' exists, others don't
-            return sam_account_name.lower() == "existing_user"
-            
+            mock_users = ["existing_user", "anek phromsiri", "vipha jinda", "witthaya treeklee", "anek.ph", "witthaya"]
+            q_clean = query.lower().strip()
+            if exact:
+                return q_clean in ["existing_user", "anek.ph"]
+            else:
+                return any(q_clean in u or u in q_clean for u in mock_users)
+
         conn = self._get_connection()
         try:
-            search_filter = f"(sAMAccountName={sam_account_name})"
+            if exact:
+                search_filter = f"(sAMAccountName={query})"
+            else:
+                escaped = query.replace('\\', '\\5c').replace('*', '\\2a').replace('(', '\\28').replace(')', '\\29').replace('\x00', '\\00')
+                search_filter = f"(&(objectClass=user)(|(sAMAccountName={escaped})(displayName={escaped})(cn={escaped})(mail={escaped})(anr={escaped})))"
+            
             conn.search(
                 search_base=self.base_dn,
                 search_filter=search_filter,

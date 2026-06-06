@@ -40,6 +40,27 @@ class UserSyncRequest(BaseModel):
     target_ou: Optional[str] = Field(None, description="Optional target OU/folder Distinguished Name.")
     custom_attributes: Optional[Dict[str, Any]] = Field(None, description="Optional extra custom attributes mapping for ADUC validation testing.")
 
+@router.get("/ad/check-user", status_code=status.HTTP_200_OK)
+def check_user(query: str, exact: bool = False):
+    """
+    Check if a user exists in Active Directory.
+    exact=true: Check exact sAMAccountName (username logon check)
+    exact=false: Check name/displayName/sAMAccountName (manager check)
+    """
+    try:
+        exists = ad_service.check_user_exists(query, exact)
+        return {"exists": exists}
+    except ActiveDirectoryError as ae:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Active Directory Query Failed: {str(ae)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred: {str(e)}"
+        )
+
 @router.get("/ou/search", status_code=status.HTTP_200_OK)
 def search_ous(query: Optional[str] = None):
     """
@@ -156,6 +177,7 @@ def sync_user(payload: UserSyncRequest):
         "ext": req_info.ext,
         "mobile_phone": req_info.mobile_phone,
         "supervisor_name": req_info.supervisor_name,
+        "custom_attributes": payload.custom_attributes or {}
     }
     
     ad_status = "Skipped (Exists)"

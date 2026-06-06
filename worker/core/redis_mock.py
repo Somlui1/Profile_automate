@@ -275,6 +275,8 @@ class MockQueue:
         self.connection = connection
 
     def enqueue(self, func_name: str, *args, **kwargs):
+        import uuid
+        import importlib
         job_id = kwargs.get("job_id") or str(uuid.uuid4())
         job_timeout = kwargs.get("job_timeout", 600)
         
@@ -313,7 +315,25 @@ class MockQueue:
         self.connection.set(queue_key, json.dumps(current_queue))
         
         logger.info(f"MockQueue: Enqueued job {job_id}")
+        
+        # Resolve and execute function dynamically in mock mode
+        try:
+            parts = func_name.split('.')
+            module_name = '.'.join(parts[:-1])
+            func_attr = parts[-1]
+            mod = importlib.import_module(module_name)
+            func = getattr(mod, func_attr)
+            
+            logger.info(f"MockQueue: Executing {func_name} synchronously...")
+            func(*args)
+        except Exception as e:
+            logger.error(f"MockQueue failed to execute {func_name} synchronously: {e}")
+            
         return job
+
+    def enqueue_in(self, time_delta, func_name, *args, **kwargs):
+        logger.info(f"MockQueue: enqueue_in scheduled with delay {time_delta}. Enqueuing immediately in mock mode.")
+        return self.enqueue(func_name, *args, **kwargs)
 
     def empty(self):
         queue_key = f"rq:queue:{self.name}"

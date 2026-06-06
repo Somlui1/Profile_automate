@@ -1,6 +1,8 @@
 import time
 import logging
+# pyrefly: ignore [missing-import]
 from core.database import get_job, update_job, add_log
+# pyrefly: ignore [missing-import]
 from core.config import settings
 
 logger = logging.getLogger("worker.pipeline")
@@ -16,6 +18,7 @@ def _check_should_stop(job_id: str, step_name: str, context: dict):
     if job["status"] == "cancelled":
         if context.get("ad_created") and settings.JOB_CANCEL_ROLLBACK_AD:
             try:
+                # pyrefly: ignore [missing-import]
                 from services.ad_service import ad_service
                 logger.info(f"Rolling back AD account: {context['username']}")
                 ad_service.delete_user(context['username'])
