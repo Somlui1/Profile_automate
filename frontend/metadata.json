@@ -1,0 +1,6 @@
+{
+  "name": "IT Resource Provisioning Dashboard",
+  "description": "Enterprise-grade IT Resource Provisioning Suite for Active Directory LDAP base, printer mappings, O365 licenses and dynamic PDF-driven automated scheduling pipelines.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

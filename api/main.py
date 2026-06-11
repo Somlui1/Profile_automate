@@ -8,6 +8,9 @@ if api_dir not in sys.path:
     sys.path.insert(0, api_dir)
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
+worker_dir = os.path.join(backend_dir, "worker")
+if worker_dir not in sys.path:
+    sys.path.insert(0, worker_dir)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,7 +42,12 @@ app.add_middleware(
 # Include core REST API router
 app.include_router(api_router, prefix="/api/v1")
 
-frontend_dir = os.path.abspath(os.path.join(api_dir, "frontend"))
+# Locate frontend directory (prioritize dist folder)
+frontend_dir = os.path.abspath(os.path.join(api_dir, "frontend", "dist"))
+if not os.path.exists(os.path.join(frontend_dir, "index.html")):
+    frontend_dir = os.path.abspath(os.path.join(api_dir, "frontend"))
+if not os.path.exists(os.path.join(frontend_dir, "index.html")):
+    frontend_dir = os.path.abspath(os.path.join(backend_dir, "frontend", "dist"))
 if not os.path.exists(os.path.join(frontend_dir, "index.html")):
     frontend_dir = os.path.abspath(os.path.join(backend_dir, "frontend"))
 
@@ -51,8 +59,11 @@ def read_root():
         return FileResponse(index_path)
     return {"message": "AD & Printer Sync API is active. Frontend directory not found locally."}
 
-# Mount static files (CSS, JS) if frontend folder exists
+# Mount static files (CSS, JS) and assets if frontend folder exists
 if os.path.exists(frontend_dir):
+    assets_dir = os.path.join(frontend_dir, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
     app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
 
 if __name__ == "__main__":

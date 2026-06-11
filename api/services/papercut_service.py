@@ -15,8 +15,8 @@ class PapercutService:
         self.api_url = settings.PAPERCUT_API_URL
         self.auth_token = settings.PAPERCUT_API_KEY
 
-        # If credentials are missing, run in mock mode for local development.
-        self.mock_mode = not (self.api_url and self.auth_token)
+        # If credentials are missing or in debug mode, run in mock mode for local development.
+        self.mock_mode = not (self.api_url and self.auth_token) or settings.DEBUG_MODE
         if self.mock_mode:
             logger.warning(
                 "PaperCut service is running in MOCK MODE. "

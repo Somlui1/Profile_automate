@@ -29,7 +29,7 @@ class ActiveDirectoryService:
         # Determine mock mode: requires at least 1 host + credentials + ldap3 library
         has_hosts = len(self.ad_hosts) > 0
         has_creds = bool(self.bind_dn and self.bind_password)
-        self.mock_mode = not (has_hosts and has_creds) or not LDAP_AVAILABLE
+        self.mock_mode = not (has_hosts and has_creds) or not LDAP_AVAILABLE or settings.DEBUG_MODE
         
         if self.mock_mode:
             reason = []
