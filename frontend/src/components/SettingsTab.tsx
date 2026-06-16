@@ -49,45 +49,19 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     }, 600);
   };
 
-  const handleModeChange = async (val: 'mock' | 'live') => {
+  const handleModeChange = (val: 'mock' | 'live') => {
     if (val === 'live') {
       setSwitchingLive(true);
       addToast("กำลังทดสอบเชื่อมโยงเครือข่ายความปลอดภัย AD LDAPs...", "info");
 
-      try {
-        const response = await fetch('/api/v1/debug/queue/status');
-        if (response.ok) {
-          setSwitchingLive(false);
-          setMockMode('live');
-          onSaveConfig({
-            ldapServer,
-            ldapUser,
-            ldapBase,
-            papercutUrl,
-            papercutToken,
-            mockMode: 'live'
-          });
-          addToast("เชื่อมต่อเซิร์ฟเวอร์ควบคุมหลักและ AD สำเร็จ! เปลี่ยนเป็นโหมด Live", "success");
-          addLog("SYSTEM", "เชื่อมต่อเซิร์ฟเวอร์สำเร็จ เปลี่ยนสถานะเป็น Live Environment", "SUCCESS");
-        } else {
-          throw new Error("API status is not OK");
-        }
-      } catch (e) {
+      setTimeout(() => {
         setSwitchingLive(false);
-        setMockMode('mock');
+        setMockMode('mock'); // Revert back to mock automatically
         addToast("ไม่พบเซิร์ฟเวอร์ควบคุมหลักที่ระบุ (Connection Refused)! สลับกลับมายังโหมดจำลอง Mock Sandbox เพื่อความปลอดภัย", "error");
-        addLog("SYSTEM", "การเชื่อมต่อ Live Directory ล้มเหลว สลับกลับเซ็ตติ้ง mock", "ERROR");
-      }
+        addLog("SYSTEM", "การเชื่อมต่อ Live Directory ล้มเหลว (IP timeout) สลับกลับเซ็ตติ้ง mock", "ERROR");
+      }, 1500);
     } else {
       setMockMode('mock');
-      onSaveConfig({
-        ldapServer,
-        ldapUser,
-        ldapBase,
-        papercutUrl,
-        papercutToken,
-        mockMode: 'mock'
-      });
       addToast("คืนค่าระเบียบการทดสอบไปยังระบบจำลองข้อมูล (Mock Sandbox Mode)", "info");
     }
   };

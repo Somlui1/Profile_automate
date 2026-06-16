@@ -1,11 +1,11 @@
 import logging
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, Tuple, List, Optional
 from core.config import settings
 from core.exceptions import ActiveDirectoryError
 
 # Try importing ldap3
 try:
-    from ldap3 import Server, Connection, ServerPool, ALL, SUBTREE, LEVEL, MODIFY_REPLACE, ROUND_ROBIN
+    from ldap3 import Server, Connection, ServerPool, ALL, SUBTREE, LEVEL, MODIFY_REPLACE, ROUND_ROBIN, BASE
     LDAP_AVAILABLE = True
 except ImportError:
     LDAP_AVAILABLE = False
@@ -26,10 +26,24 @@ class ActiveDirectoryService:
         self.new_hire_ou: str = settings.AD_NEW_HIRE_OU
         self.contract_ou: str = settings.AD_CONTRACT_OU
         
-        # Determine mock mode: requires at least 1 host + credentials + ldap3 library
+        # Determine if real AD connection works
         has_hosts = len(self.ad_hosts) > 0
         has_creds = bool(self.bind_dn and self.bind_password)
-        self.mock_mode = not (has_hosts and has_creds) or not LDAP_AVAILABLE or settings.DEBUG_MODE
+        self._real_ad_working = False
+        
+        if (has_hosts and has_creds) and LDAP_AVAILABLE:
+            try:
+                # Test connection to real AD using ignore_mock=True to bypass property check
+                conn = self._get_connection(ignore_mock=True)
+                if conn:
+                    conn.unbind()
+                self._real_ad_working = True
+                logger.info("Successfully connected to real Active Directory LDAP.")
+            except Exception as e:
+                logger.warning(
+                    f"Could not connect to real Active Directory on startup: {e}. "
+                    f"Set correct AD_HOSTS, AD_USER, and AD_PASSWORD in .env."
+                )
         
         if self.mock_mode:
             reason = []
@@ -39,10 +53,11 @@ class ActiveDirectoryService:
                 reason.append("AD_HOSTS not configured")
             if not has_creds:
                 reason.append("AD_USER or AD_PASSWORD missing")
+            if has_hosts and has_creds and LDAP_AVAILABLE and not self._real_ad_working:
+                reason.append("AD server connection failed")
             logger.warning(
-                f"Active Directory LDAP is running in MOCK MODE. "
+                f"Active Directory LDAP is running in MOCK MODE (SYSTEM_MODE={settings.SYSTEM_MODE}). "
                 f"Reason: {', '.join(reason)}. "
-                f"Set AD_HOSTS, AD_USER, and AD_PASSWORD in .env to enable real LDAP sync."
             )
         else:
             logger.info(
@@ -50,12 +65,22 @@ class ActiveDirectoryService:
                 f"{', '.join(self.ad_hosts)} | Base DN: {self.base_dn}"
             )
 
-    def _get_connection(self) -> Any:
+    @property
+    def mock_mode(self) -> bool:
+        if settings.SYSTEM_MODE == "mock":
+            return True
+        has_hosts = len(self.ad_hosts) > 0
+        has_creds = bool(self.bind_dn and self.bind_password)
+        if not (has_hosts and has_creds) or not LDAP_AVAILABLE:
+            return True
+        return not self._real_ad_working
+
+    def _get_connection(self, ignore_mock: bool = False) -> Any:
         """
         Establishes and returns an LDAP Connection object.
         Tries each host in AD_HOSTS in order (failover).
         """
-        if self.mock_mode:
+        if self.mock_mode and not ignore_mock:
             return None
 
         import ssl
@@ -134,6 +159,60 @@ class ActiveDirectoryService:
                 attributes=["sAMAccountName"]
             )
             return len(conn.entries) > 0
+        except Exception as e:
+            raise ActiveDirectoryError(f"Error checking user existence in AD: {str(e)}")
+        finally:
+            if conn:
+                conn.unbind()
+
+    def check_user_exists_with_username(self, query: str, exact: bool = False) -> Tuple[bool, Optional[str]]:
+        """
+        Check if a user exists and returns (exists, sAMAccountName).
+        """
+        if self.mock_mode:
+            mock_mapping = {
+                "existing_user": "existing_user",
+                "anek.ph": "anek.ph",
+                "anek phromsiri": "anek.ph",
+                "vipha jinda": "vipha.j",
+                "witthaya treeklee": "witthaya.t",
+                "witthaya": "witthaya.t",
+                "mr. somchai": "somchai.m",
+                "somchai": "somchai.m"
+            }
+            q_clean = query.lower().strip()
+            
+            # Direct match
+            if q_clean in mock_mapping:
+                return True, mock_mapping[q_clean]
+                
+            # Partial match
+            for k, v in mock_mapping.items():
+                if q_clean in k or k in q_clean:
+                    return True, v
+            return False, None
+
+        conn = self._get_connection()
+        try:
+            if exact:
+                search_filter = f"(sAMAccountName={query})"
+            else:
+                escaped = query.replace('\\', '\\5c').replace('*', '\\2a').replace('(', '\\28').replace(')', '\\29').replace('\x00', '\\00')
+                search_filter = f"(&(objectClass=user)(|(sAMAccountName={escaped})(displayName={escaped})(cn={escaped})(mail={escaped})(anr={escaped})))"
+            
+            conn.search(
+                search_base=self.base_dn,
+                search_filter=search_filter,
+                search_scope=SUBTREE,
+                attributes=["sAMAccountName"]
+            )
+            if len(conn.entries) > 0:
+                try:
+                    s_name = str(conn.entries[0].sAMAccountName.value)
+                    return True, s_name
+                except Exception:
+                    return True, query
+            return False, None
         except Exception as e:
             raise ActiveDirectoryError(f"Error checking user existence in AD: {str(e)}")
         finally:
@@ -378,6 +457,228 @@ class ActiveDirectoryService:
         finally:
             if conn:
                 conn.unbind()
+
+    def get_user_details(self, dn: str) -> Optional[dict]:
+        """
+        Gets detailed attributes of a user in Active Directory.
+        """
+        try:
+            import re
+            dn_parts = re.split(r'(?<!\\),', dn)
+            cn_part = dn_parts[0] if dn_parts else ''
+            raw_name = cn_part[3:].replace('\\\\,', ',').replace('\\,', ',').strip() if cn_part.upper().startswith('CN=') else cn_part.replace('\\\\,', ',').replace('\\,', ',').strip()
+            parent_ou = ",".join(dn_parts[1:]) if len(dn_parts) > 1 else f"OU=Users,{self.base_dn}"
+
+            if self.mock_mode:
+                # 1. Try to search sqlite database for a matching sync job
+                db_user_details = None
+                try:
+                    import json
+                    from core.database import get_db_connection
+                    conn_db = get_db_connection()
+                    cursor = conn_db.cursor()
+                    cursor.execute('SELECT payload FROM jobs')
+                    rows = cursor.fetchall()
+                    conn_db.close()
+                    
+                    def clean_name_str(s):
+                        return re.sub(r'^(mr\.|ms\.|mrs\.|dr\.|mr|ms|mrs|dr)\s+', '', s, flags=re.IGNORECASE).strip()
+                    
+                    clean_target = clean_name_str(raw_name).lower()
+                    
+                    for row in rows:
+                        try:
+                            payload = json.loads(row['payload'])
+                            req_info = payload.get('requester_info') or {}
+                            name_eng = req_info.get('name_english', '')
+                            if clean_name_str(name_eng).lower() == clean_target:
+                                custom_attrs = payload.get('custom_attributes') or {}
+                                task_data = payload.get('task_data') or {}
+                                ad_profile = task_data.get('ad_profile') or {}
+                                papercut_profile = task_data.get('papercut_profile') or {}
+                                
+                                uid = ad_profile.get('custom_username') or payload.get('custom_username')
+                                if not uid:
+                                    first_p, last_p = self.extract_first_last_name(name_eng)
+                                    uid = f"{first_p.lower()}.{last_p[0].lower()}" if last_p else first_p.lower()
+                                    
+                                print_code = papercut_profile.get('print_code') or payload.get('custom_print_code') or "990011"
+                                
+                                db_user_details = {
+                                    "uid": uid,
+                                    "name": name_eng,
+                                    "email": custom_attrs.get('email') or f"{uid}@aapico.com",
+                                    "title": req_info.get('position', 'Staff Member'),
+                                    "dept": req_info.get('department', 'Operations'),
+                                    "printCode": print_code,
+                                    "ou": parent_ou,
+                                    "papercut": "Synced",
+                                    "status": "Active",
+                                    "mobile": req_info.get('mobile_phone', '+66 (0) 81 234 5678'),
+                                    "company": req_info.get('company', 'AAPICO Hitech PLC'),
+                                    "manager": req_info.get('supervisor_name', 'Somsak Sombat'),
+                                    "office": req_info.get('office', 'AAPICO HQ - Building A'),
+                                    "description": req_info.get('employee_id', 'Auto Synced Active Directory Object'),
+                                    "street": req_info.get('address', '99 Moo 1 Hitech Industrial Estate, Tambol Ban Len'),
+                                    "city": 'Bang Pa-In',
+                                    "state": 'Phranakhon Sri Ayutthaya',
+                                    "zipCode": req_info.get('zip_code', '13160'),
+                                    "country": 'Thailand'
+                                }
+                                break
+                        except Exception as inner_e:
+                            logger.error(f"Error parsing job payload during AD match: {inner_e}")
+                except Exception as db_e:
+                    logger.error(f"Database query failed during AD user details mock: {db_e}")
+                
+                if db_user_details:
+                    return db_user_details
+
+                # 2. Generate mock details based on DN/name
+                name = raw_name
+                first_name, last_name = self.extract_first_last_name(name)
+                uid = f"{first_name.lower()}.{last_name[0].lower()}" if last_name else first_name.lower()
+                
+                # Simple mock attributes mapping
+                dept = "Information Technology" if "Information Technology" in dn or "Helpdesk" in dn else \
+                       "Engineering" if "Engineering" in dn or "Cloud" in dn or "DevOps" in dn else \
+                       "Human Resources" if "Human" in dn else \
+                       "Marketing" if "Marketing" in dn else \
+                       "Production" if "Production" in dn else "Operations"
+                       
+                title = "Staff Member"
+                email = f"{uid}@aapico.com"
+                print_code = "990011"
+                if "Administrator" in name:
+                    title = "Domain Administrator"
+                    uid = "Administrator"
+                elif "Vipha" in name:
+                    title = "VP of HR & Admin"
+                    dept = "Human Resources"
+                    uid = "vipha.ji"
+                    email = "vipha.j@aapico.com"
+                    print_code = "998811"
+                elif "Anek" in name:
+                    title = "Director of Engineering"
+                    dept = "Engineering"
+                    uid = "anek.ph"
+                    email = "anek.p@aapico.com"
+                    print_code = "112233"
+                elif "Somsak" in name:
+                    title = "IT Operations Manager"
+                    dept = "Information Technology"
+                    uid = "somsak.so"
+                    email = "somsak.s@aapico.com"
+                    print_code = "445566"
+
+                return {
+                    "uid": uid,
+                    "name": name,
+                    "email": email,
+                    "title": title,
+                    "dept": dept,
+                    "printCode": print_code,
+                    "ou": parent_ou,
+                    "papercut": "Synced",
+                    "status": "Active",
+                    "mobile": "+66 (0) 81 234 5678",
+                    "company": "AAPICO Hitech PLC",
+                    "manager": "Somsak Sombat",
+                    "office": "AAPICO HQ - Building A",
+                    "description": "Auto Synced Active Directory Object",
+                    "street": "99 Moo 1 Hitech Industrial Estate, Tambol Ban Len",
+                    "city": "Bang Pa-In",
+                    "state": "Phranakhon Sri Ayutthaya",
+                    "zipCode": "13160",
+                    "country": "Thailand"
+                }
+
+            conn = self._get_connection()
+            try:
+                conn.search(
+                    search_base=dn,
+                    search_filter="(objectClass=user)",
+                    search_scope=BASE,
+                    attributes=[
+                        "sAMAccountName", "displayName", "givenName", "sn", "description", 
+                        "physicalDeliveryOfficeName", "telephoneNumber", "mail", "l", "st", 
+                        "postalCode", "co", "mobile", "title", "department", "company", 
+                        "employeeID", "manager", "userAccountControl", "streetAddress", "pager"
+                    ]
+                )
+                if not conn.entries:
+                    return None
+                    
+                entry = conn.entries[0]
+                
+                # Helper function for safe attribute extraction
+                def safe_get(attr_name, default=""):
+                    try:
+                        if hasattr(entry, attr_name):
+                            attr = getattr(entry, attr_name)
+                            if attr and attr.value:
+                                if isinstance(attr.value, list):
+                                    return str(attr.value[0]) if attr.value else default
+                                return str(attr.value)
+                    except Exception:
+                        pass
+                    return default
+                
+                manager_val = ""
+                mgr_dn = safe_get("manager")
+                if mgr_dn:
+                    if "cn=" in mgr_dn.lower():
+                        mgr_parts = re.split(r'(?<!\\),', mgr_dn)
+                        mgr_cn_parts = [p for p in mgr_parts if p.lower().startswith("cn=")]
+                        if mgr_cn_parts:
+                            manager_val = mgr_cn_parts[0].split("=")[1].replace('\\\\,', ',').replace('\\,', ',').strip()
+                    if not manager_val:
+                        manager_val = mgr_dn
+                
+                uac_str = safe_get("userAccountControl")
+                try:
+                    uac = int(uac_str) if uac_str else 512
+                except ValueError:
+                    uac = 512
+                status = "Disabled" if uac & 2 else "Active"
+                
+                pager_val = safe_get("pager")
+                emp_id_val = safe_get("employeeID")
+                print_code = pager_val if pager_val else emp_id_val
+                
+                # Extract CN for name fallback
+                dn_cn = raw_name if cn_part.upper().startswith("CN=") else ""
+                
+                return {
+                    "uid": safe_get("sAMAccountName"),
+                    "name": safe_get("displayName") or safe_get("cn") or dn_cn or raw_name or dn,
+                    "email": safe_get("mail"),
+                    "title": safe_get("title"),
+                    "dept": safe_get("department"),
+                    "printCode": print_code,
+                    "ou": ",".join(dn_parts[1:]) if len(dn_parts) > 1 else "",
+                    "papercut": "Synced",
+                    "status": status,
+                    "mobile": safe_get("mobile") or safe_get("telephoneNumber"),
+                    "company": safe_get("company"),
+                    "manager": manager_val,
+                    "office": safe_get("physicalDeliveryOfficeName"),
+                    "description": safe_get("description"),
+                    "street": safe_get("streetAddress"),
+                    "city": safe_get("l"),
+                    "state": safe_get("st"),
+                    "zipCode": safe_get("postalCode"),
+                    "country": safe_get("co")
+                }
+            except Exception as search_err:
+                logger.exception(f"LDAP search failed in get_user_details for DN {dn}")
+                raise search_err
+            finally:
+                if conn:
+                    conn.unbind()
+        except Exception as outer_err:
+            logger.exception(f"Outer exception in get_user_details for DN {dn}")
+            raise outer_err
 
     def search_ous(self, query: str = "") -> list:
         """

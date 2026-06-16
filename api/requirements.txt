@@ -8,3 +8,4 @@ requests==2.32.5
 redis>=5.0.0
 rq>=1.16.0
 sse-starlette>=2.0.0
+rq-dashboard>=0.6.7

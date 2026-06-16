@@ -1,35 +1,33 @@
-From:	(ENV_MAIL_SENDER)
-Sent:	Friday, May 29, 2026 4:18 PM
-To:	{supervisor_name} #search from AD and Get supervisor.username  > supervisor.username@aapico.com
-Cc:	{{ENV_MAIL_CC}}
-Subject:	New AD Account Created for khon' {name_english} ({company})
+To: {supervisor_name}
+Cc: {{ENV_MAIL_CC}}
+Subject: New AD Account Created for {name_english} ({company})
 
-Dear Khun @{{supervisor_name}} 
+Dear Khun {supervisor_name},
 
-IT dept. would like informed that information as below :
-Login Windows
-Username : {username}
- Password : {passwrd}
-First logon you must change password
-* Password Policy
-1. Minimum 8 digits
-2. Inclusion of one or more numerical digits (1,2,3,…)
-3. Inclusion of special characters, such as @, #, $
-4. Prohibition of passwords that match the format of username.
+We are pleased to inform you that the IT accounts for your new team member, {name_english}, have been successfully provisioned.
 
----------------------------------------------------------------------------------------------------------------------------
-Email: {username}@{domain}
- --------------------------------------------------------------------------------------------------------------------------- 
-Internet Access Level:  {format_PDF}
---------------------------------------------------------------------------------------------------------------------------- 
-Printer Code:  {Printer_code}
----------------------------------------------------------------------------------------------------------------------------
- 
+The access credentials and configuration outline are detailed below:
+
+1. Active Directory Account (Corporate Logon)
+- Username Logins: {username}
+- UPN Principal: {username}@{domain}
+- Primary Email Address: {email}
+- Initial Password Security: {passwrd}
+- Status Profile: Password change is required on first logon (Active)
+
+2. Network & Authorization Profile
+- Regional Workspace: {company}
+- Assigned Group Memberships: Domain Users
+- Internet Proxy Security Filter: {format_PDF} (Standard Corporate Browsing)
+
+3. Secure Hardcopy Release (Papercut Printing PIN Map)
+- Personal release print Code: {Printer_code}
+
+Please instruct the employee to sign in to their desktop computer using the corporate logon credentials listed above, after which they will be immediately prompted to set their permanent personal password.
+
+For support, please contact the IT Helpdesk at ext. 3333 or reply directly to this mail.
+
 Best regards,
-Wajeepradit Prompan (AH)
---------------------------------------
-AAPICO Hitech  Public Co., Ltd. 
-99 Moo1, Hitech Industrial Estate,T. Banlane, 
-Bang Pa-in, Ayutthaya 13160
-Ext.1234
- 
+
+AAPICO Enterprise Infrastructure Operations Suite
+IT Support Desk & Automatons Division

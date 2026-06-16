@@ -379,11 +379,44 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
                             const stepTitle = stepName === 'ad_creation' ? 'Active Directory' : stepName === 'papercut_sync' ? 'Papercut Mappings' : stepName === 'm365_license' ? 'M365 Licensing' : 'Outlook dispatch';
                             const stepLogs = (jobLogsCache[job.id] || []).filter((l) => l.step === stepName || (stepName === 'ad_creation' && l.step === 'pipeline'));
 
+                            // Check sub-sequences for m365_license
+                            let subStep1 = 'STANDBY';
+                            let subStep2 = 'STANDBY';
+                            if (stepName === 'm365_license') {
+                              const hasEnqueued = stepLogs.some(l => l.message.includes("delayed") || l.message.includes("Enqueuing"));
+                              const hasAssigning = stepLogs.some(l => l.message.includes("Assigning"));
+                              const hasSuccess = stepLogs.some(l => l.message.includes("Successfully") || l.status === 'success');
+                              
+                              if (hasEnqueued) subStep1 = 'RUNNING';
+                              if (hasAssigning) {
+                                subStep1 = 'SUCCESS';
+                                subStep2 = 'RUNNING';
+                              }
+                              if (hasSuccess) {
+                                subStep1 = 'SUCCESS';
+                                subStep2 = 'SUCCESS';
+                              }
+                            }
+
                             return (
                               <div key={stepName} className="space-y-4">
                                 <h4 className="font-bold text-xs text-primary uppercase border-b pb-1.5 mb-2 flex items-center gap-1.5">
                                   <Database className="h-3.5 w-3.5 shrink-0" /> {stepTitle}
                                 </h4>
+                                
+                                {stepName === 'm365_license' && (
+                                  <div className="mb-3 p-2.5 bg-white rounded-lg border border-outline-variant space-y-2 font-sans text-[10px]">
+                                    <div className="flex items-center gap-2 text-slate-700">
+                                      <span className={`h-2 w-2 rounded-full ${subStep1 === 'SUCCESS' ? 'bg-secondary' : subStep1 === 'RUNNING' ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
+                                      <span className={subStep1 === 'SUCCESS' ? 'line-through text-slate-400 font-medium' : 'font-semibold'}>Waiting for Azure AD Connect / Entra Cloud Sync (5m delay)</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-slate-700">
+                                      <span className={`h-2 w-2 rounded-full ${subStep2 === 'SUCCESS' ? 'bg-secondary' : subStep2 === 'RUNNING' ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
+                                      <span className={subStep2 === 'SUCCESS' ? 'line-through text-slate-400 font-medium' : 'font-semibold'}>Assigning Microsoft 365 licenses via Graph API</span>
+                                    </div>
+                                  </div>
+                                )}
+
                                 <div className="space-y-3 relative pl-3">
                                   {stepLogs.length > 0 ? (
                                     stepLogs.map((log, idx) => (

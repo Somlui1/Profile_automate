@@ -2,9 +2,10 @@ import os
 from typing import List
 from dotenv import load_dotenv
 
-# Load settings from worker/.env
+# Load settings from root .env
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-env_path = os.path.join(base_dir, ".env")
+project_root = os.path.dirname(base_dir)
+env_path = os.path.join(project_root, ".env")
 load_dotenv(dotenv_path=env_path)
 
 class Settings:
@@ -65,6 +66,16 @@ class Settings:
     
     # Redis Configuration
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    FAKE_REDIS: str = os.getenv("FAKE_REDIS", "")
+    MOCK_REDIS: bool = os.getenv("MOCK_REDIS", "true").lower() == "true"
+    MOCK_REDIS_TYPE: str = os.getenv("MOCK_REDIS_TYPE", "file")
+    MOCK_REDIS_PATH: str = os.getenv("MOCK_REDIS_PATH", "")
+
+    @property
+    def REDIS_MODE(self) -> str:
+        if self.MOCK_REDIS:
+            return "mock"
+        return "live"
 
     # Job Configuration
     JOB_LOG_RETENTION_DAYS: int = int(os.getenv("JOB_LOG_RETENTION_DAYS", "30"))
@@ -73,7 +84,49 @@ class Settings:
     # Database Configuration
     DB_PATH: str = os.getenv("DB_PATH", os.path.abspath(os.path.join(base_dir, "data", "jobs.db")))
     
-    # Debug Mode
-    DEBUG_MODE: bool = os.getenv("DEBUG_MODE", "true").lower() == "true"
+    # System Mode (Dynamic Property: 'live', 'debug', 'mock')
+    @property
+    def SYSTEM_MODE(self) -> str:
+        config_path = os.path.abspath(os.path.join(project_root, "api", "data", "system_config.json"))
+        if os.path.exists(config_path):
+            try:
+                import json
+                with open(config_path, "r") as f:
+                    data = json.load(f)
+                    if "SYSTEM_MODE" in data:
+                        return data["SYSTEM_MODE"]
+                    if "DEBUG_MODE" in data:
+                        return "mock" if data["DEBUG_MODE"] else "live"
+            except Exception:
+                pass
+        return os.getenv("SYSTEM_MODE", "mock").lower()
+
+    @SYSTEM_MODE.setter
+    def SYSTEM_MODE(self, val: str):
+        if val not in ["live", "debug", "mock"]:
+            raise ValueError("Invalid system mode. Must be 'live', 'debug', or 'mock'")
+        config_path = os.path.abspath(os.path.join(project_root, "api", "data", "system_config.json"))
+        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        try:
+            import json
+            data = {}
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    data = json.load(f)
+            data["SYSTEM_MODE"] = val
+            data["DEBUG_MODE"] = (val in ["debug", "mock"])
+            with open(config_path, "w") as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(f"Failed to save SYSTEM_MODE settings: {e}")
+
+    # Debug Mode (Derived from SYSTEM_MODE)
+    @property
+    def DEBUG_MODE(self) -> bool:
+        return self.SYSTEM_MODE in ["debug", "mock"]
+
+    @DEBUG_MODE.setter
+    def DEBUG_MODE(self, val: bool):
+        self.SYSTEM_MODE = "mock" if val else "live"
 
 settings = Settings()

@@ -5,6 +5,7 @@ from core.database import update_job, add_log, get_job
 from core.redis_conn import sync_queue
 from services.ad_service import ad_service
 from services.papercut_service import papercut_service
+from services.m365_service import m365_service
 
 logger = logging.getLogger("worker.tasks.sync_user")
 
@@ -64,8 +65,84 @@ def move_to_next_step(job_id: str, payload: dict, current_step: str):
             update_job(job_id, status="success", result={"message": "Pipeline completed successfully without email notification"})
             add_log(job_id, "pipeline", "success", "Pipeline execution finished successfully")
 
+def normalize_payload(payload: dict) -> dict:
+    if "metadata" in payload or "task_data" in payload:
+        return payload
+        
+    req_info = payload.get("requester_info", {})
+    doc_info = payload.get("document_info", {})
+    custom_attrs = payload.get("custom_attributes", {}) or {}
+    
+    username = payload.get("custom_username")
+    if not username:
+        name_english = req_info.get("name_english", "").strip().lower()
+        parts = name_english.replace("mr. ", "").replace("ms. ", "").replace("mrs. ", "").split()
+        if len(parts) >= 2:
+            username = f"{parts[0]}.{parts[1][0]}"
+        elif len(parts) == 1:
+            username = parts[0]
+        else:
+            username = f"user.{req_info.get('employee_id', 'unknown')}"
+
+    licenses = custom_attrs.get("licenses")
+    if licenses is None:
+        if req_info.get("department", "").lower().find("engineering") != -1:
+            licenses = ["sku-ems", "sku-standardpack"]
+        else:
+            licenses = ["sku-standardpack"]
+
+    normalized_custom_attrs = {
+        "first_name": custom_attrs.get("first_name") or (req_info.get("name_english", "").split()[0] if req_info.get("name_english") else ""),
+        "last_name": custom_attrs.get("last_name") or (req_info.get("name_english", "").split()[-1] if req_info.get("name_english") and len(req_info.get("name_english", "").split()) > 1 else ""),
+        "display_name": custom_attrs.get("display_name") or req_info.get("name_english", ""),
+        "description": custom_attrs.get("description") or req_info.get("employee_id", ""),
+        "office": custom_attrs.get("office") or req_info.get("company", ""),
+        "email": custom_attrs.get("email") or f"{username}@{req_info.get('company', 'company').lower().replace(' ', '')}.com",
+        "mobile": custom_attrs.get("mobile") or req_info.get("mobile_phone", ""),
+        "title": custom_attrs.get("title") or req_info.get("position", ""),
+        "department": custom_attrs.get("department") or req_info.get("department", ""),
+        "company": custom_attrs.get("company") or req_info.get("company", ""),
+        "manager": custom_attrs.get("manager") or req_info.get("supervisor_name", ""),
+        "street": custom_attrs.get("street") or req_info.get("address", ""),
+        "zip_postal_code": custom_attrs.get("zip_postal_code") or req_info.get("zip_code", ""),
+        **custom_attrs
+    }
+
+    return {
+        "metadata": {
+            "document_info": doc_info,
+            "requester_info": req_info
+        },
+        "workflow_control": {
+            "enable_ad_creation": True,
+            "enable_papercut_sync": custom_attrs.get("enable_papercut_sync", True),
+            "enable_microsoft_365_license": custom_attrs.get("enable_microsoft_365_license", True),
+            "enable_send_email": custom_attrs.get("enable_send_email", True)
+        },
+        "task_data": {
+            "ad_profile": {
+                "custom_username": username,
+                "target_ou": payload.get("target_ou"),
+                "custom_attributes": normalized_custom_attrs
+            },
+            "papercut_profile": {
+                "print_code": payload.get("custom_print_code") or req_info.get("employee_id")
+            },
+            "microsoft_365_licenses": {
+                "SkuId_id": licenses
+            },
+            "email_profile": {
+                "emailTo": custom_attrs.get("emailTo") or f"supervisor@{req_info.get('company', 'company').lower().replace(' ', '')}.com",
+                "emailCc": custom_attrs.get("emailCc") or "it.support@aapico.com",
+                "emailSubject": custom_attrs.get("emailSubject") or f"New AD Account Created for {req_info.get('name_english', 'Employee')}",
+                "emailBody": custom_attrs.get("emailBody") or "Welcome to the team!"
+            }
+        }
+    }
+
 # Main entry point from the API
 def run_sync_pipeline(job_id: str, payload: dict):
+    payload = normalize_payload(payload)
     update_job(job_id, status="processing")
     add_log(job_id, "pipeline", "running", "Initiating decoupled multi-step provisioning pipeline")
     
@@ -208,12 +285,17 @@ def run_m365_license_task(job_id: str, payload: dict):
         m365_licenses = payload.get("task_data", {}).get("microsoft_365_licenses", {})
         sku_ids = m365_licenses.get("SkuId_id", [])
         
-        # Assign licenses using mock / graph service (simulate M365 license assignation)
-        add_log(job_id, "m365_license", "running", f"Assigning Microsoft 365 licenses: {', '.join(sku_ids) if sku_ids else 'None'}")
+        # Format licenses for display in logs
+        log_skus = []
+        for sku in sku_ids:
+            if isinstance(sku, dict):
+                log_skus.append(sku.get("skuPartNumber") or sku.get("skuId") or str(sku))
+            else:
+                log_skus.append(str(sku))
         
-        # In a real environment, we'd interact with Graph API to assign the selected SkuIds.
-        # For this demo/setup, we simulate license assignment success.
-        time.sleep(2)
+        # Assign licenses using Microsoft Graph Service
+        upn = ad_profile.get("custom_attributes", {}).get("user_principal_name") or f"{username}@aapico.com"
+        m365_service.assign_licenses(upn, sku_ids)
         add_log(job_id, "m365_license", "success", f"Successfully assigned {len(sku_ids)} M365 licenses to user {username}")
         
         move_to_next_step(job_id, payload, current_step="m365_license")

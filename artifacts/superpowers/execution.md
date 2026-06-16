@@ -1,0 +1,5 @@
+- **Step 1: Refactor download_pdf_from_url in pdf_service.py**
+  - Files: `api/services/pdf_service.py`
+  - Change: Added support for `file:///` protocol and local file paths (direct and relative to project root or api folder). Relaxed content-type validation by checking for `%PDF` magic bytes.
+  - Verification: Ran compilation test and path resolution checks on `temp/request.pdf`, `file:///...`, and public web URLs. All passed.
+  - Result: passed

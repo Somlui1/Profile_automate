@@ -26,10 +26,13 @@ class ActiveDirectoryService:
         self.new_hire_ou: str = settings.AD_NEW_HIRE_OU
         self.contract_ou: str = settings.AD_CONTRACT_OU
         
-        # Determine mock mode: requires at least 1 host + credentials + ldap3 library
-        has_hosts = len(self.ad_hosts) > 0
-        has_creds = bool(self.bind_dn and self.bind_password)
-        self.mock_mode = not (has_hosts and has_creds) or not LDAP_AVAILABLE
+        # Determine mock mode: respects SYSTEM_MODE or checks credentials/library
+        if settings.SYSTEM_MODE == "mock":
+            self.mock_mode = True
+        else:
+            has_hosts = len(self.ad_hosts) > 0
+            has_creds = bool(self.bind_dn and self.bind_password)
+            self.mock_mode = not (has_hosts and has_creds) or not LDAP_AVAILABLE
         
         if self.mock_mode:
             reason = []
@@ -591,6 +594,28 @@ class ActiveDirectoryService:
         sam_account_name = user_details.get("username")
         if not sam_account_name:
             raise ActiveDirectoryError("sAMAccountName (username) is required to create AD user.")
+
+        # Check and resolve sAMAccountName length limit (20 chars) and collisions
+        original_username = sam_account_name
+        if len(sam_account_name) > 20:
+            if "." in sam_account_name:
+                parts = sam_account_name.split(".", 1)
+                sam_account_name = f"{parts[0]}.{parts[1]}"[:20]
+            else:
+                sam_account_name = sam_account_name[:20]
+            logger.info(f"Username '{original_username}' truncated to '{sam_account_name}' due to 20-character AD limit")
+
+        # Collision resolution
+        counter = 1
+        base_username = sam_account_name
+        while self.check_user_exists(sam_account_name):
+            suffix = str(counter)
+            available_len = 20 - len(suffix)
+            sam_account_name = f"{base_username[:available_len]}{suffix}"
+            counter += 1
+            
+        if sam_account_name != original_username:
+            logger.info(f"Username resolved to '{sam_account_name}' due to conflict or length constraint")
             
         # Select appropriate Organizational Unit (OU)
         if target_ou:
@@ -599,6 +624,26 @@ class ActiveDirectoryService:
             resolved_ou = self.contract_ou if is_contractor else self.new_hire_ou
             if not resolved_ou:
                 resolved_ou = self.base_dn  # Fallback to base DN if OU not defined
+
+        # Pre-flight check: Target OU existence check
+        if not self.mock_mode:
+            conn = self._get_connection()
+            try:
+                from ldap3 import BASE
+                conn.search(
+                    search_base=resolved_ou,
+                    search_filter="(objectClass=*)",
+                    search_scope=BASE,
+                    attributes=["distinguishedName"]
+                )
+                if not conn.entries:
+                    raise ActiveDirectoryError(f"Target OU '{resolved_ou}' does not exist in Active Directory.")
+            except Exception as ou_err:
+                logger.error(f"OU validation failed for '{resolved_ou}': {ou_err}")
+                raise ActiveDirectoryError(f"Target OU '{resolved_ou}' validation failed or does not exist: {ou_err}")
+            finally:
+                if conn:
+                    conn.unbind()
             
         custom_attrs = user_details.get("custom_attributes") or {}
         

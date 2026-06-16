@@ -14,17 +14,15 @@ class PapercutService:
     def __init__(self):
         self.api_url = settings.PAPERCUT_API_URL
         self.auth_token = settings.PAPERCUT_API_KEY
+        self._server = xmlrpc.client.ServerProxy(self.api_url) if self.api_url else None
+        
+        logger.info(f"Initialized PapercutService (mock_mode={self.mock_mode})")
 
-        # If credentials are missing or in debug mode, run in mock mode for local development.
-        self.mock_mode = not (self.api_url and self.auth_token) or settings.DEBUG_MODE
-        if self.mock_mode:
-            logger.warning(
-                "PaperCut service is running in MOCK MODE. "
-                "Set PAPERCUT_API_URL and PAPERCUT_API_KEY in .env to enable real PaperCut integration."
-            )
-            self._server = None
-        else:
-            self._server = xmlrpc.client.ServerProxy(self.api_url)
+    @property
+    def mock_mode(self) -> bool:
+        if settings.SYSTEM_MODE == "mock":
+            return True
+        return not (self.api_url and self.auth_token)
 
     # ------------------------------------------------------------------ #
     #  Primary Card

@@ -87,7 +87,7 @@ After user verification and edits in Step 2, the data is collected and packaged 
             "company": "AAPICO Amata",
             "name_thai": "นางสาววนิดา ศรีใส",
             "name_english": "Wanida Srisai",
-            "employee_id": "user.10003083",
+            "employee_id": "10003083",
             "position": "HR Specialist",
             "department_group": "Human Resources",
             "department": "Human Resources",
@@ -102,7 +102,7 @@ After user verification and edits in Step 2, the data is collected and packaged 
     "workflow_control": {
         "enable_ad_creation": true,
         "enable_papercut_sync": true,
-        "enable_email_notification": true,
+        "enable_microsoft_365_license": true,
         "enable_send_email": true
     },
     "task_data": {
@@ -112,7 +112,7 @@ After user verification and edits in Step 2, the data is collected and packaged 
             "custom_attributes": {
                 "first_name": "Wanida",
                 "last_name": "Srisai",
-                "display_name": "Wanida Srisai",
+                "display_name": "Wanida Srisai (AAPICO Amata)",
                 "description": "10003083",
                 "office": "AAPICO Amata",
                 "telephone_number": "{To be specified in Step 2}",
@@ -136,9 +136,15 @@ After user verification and edits in Step 2, the data is collected and packaged 
             }
         },
         "papercut_profile": {
-            "print_code": "99XXXX",
-            "papercutCardId": "N/A",
-            "papercutBalance": 100
+            "print_code": "99XXXX"
+        },
+        "microsoft_365_licenses": {
+            "SkuId_id": [
+                {
+                    "skuId": "a4722e58-ec99-4c3b-a34c-38620f1c4288",
+                    "skuPartNumber": "STANDARDPACK"
+                }
+            ]
         },
         "email_profile": {
             "emailSubject": "Automated Template Subject",

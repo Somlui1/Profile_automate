@@ -4,17 +4,21 @@ import sys
 # Locate directories relative to this file
 api_dir = os.path.dirname(os.path.abspath(__file__))
 backend_dir = os.path.dirname(api_dir)
-if api_dir not in sys.path:
-    sys.path.insert(0, api_dir)
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 worker_dir = os.path.join(backend_dir, "worker")
 if worker_dir not in sys.path:
     sys.path.insert(0, worker_dir)
+if api_dir not in sys.path:
+    sys.path.insert(0, api_dir)
+else:
+    sys.path.remove(api_dir)
+    sys.path.insert(0, api_dir)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.wsgi import WSGIMiddleware
 from fastapi.responses import FileResponse
 from endpoints.router import api_router
 from core.config import settings
@@ -41,6 +45,25 @@ app.add_middleware(
 
 # Include core REST API router
 app.include_router(api_router, prefix="/api/v1")
+
+# Mount RQ Dashboard for Redis Queue debugging/monitoring
+os.environ["RQ_DASHBOARD_URL_PREFIX"] = "/rq"
+os.environ["RQ_DASHBOARD_REDIS_URL"] = settings.FAKE_REDIS if settings.SYSTEM_MODE in ["debug", "mock"] else settings.REDIS_URL
+import rq_dashboard.app
+
+flask_app = rq_dashboard.app.create_app()
+
+class PrefixMiddleware:
+    def __init__(self, app, prefix=""):
+        self.app = app
+        self.prefix = prefix
+
+    def __call__(self, environ, start_response):
+        environ['PATH_INFO'] = self.prefix + environ['PATH_INFO']
+        environ['SCRIPT_NAME'] = ""
+        return self.app(environ, start_response)
+
+app.mount("/rq", WSGIMiddleware(PrefixMiddleware(flask_app, "/rq")))
 
 # Locate frontend directory (prioritize dist folder)
 frontend_dir = os.path.abspath(os.path.join(api_dir, "frontend", "dist"))

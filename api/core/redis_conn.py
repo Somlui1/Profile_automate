@@ -5,21 +5,17 @@ import logging
 
 logger = logging.getLogger("app.core.redis")
 
-# Connect to Redis
+# Select connection URL based on SYSTEM_MODE setting
+redis_url = settings.FAKE_REDIS if settings.SYSTEM_MODE in ["debug", "mock"] else settings.REDIS_URL
+logger.info(f"Connecting to Redis at {redis_url} (system_mode={settings.SYSTEM_MODE})")
+
+redis_conn = None
+sync_queue = None
+
 try:
-    redis_conn = redis.Redis.from_url(settings.REDIS_URL)
-    # Ping to test connection
+    redis_conn = redis.Redis.from_url(redis_url, socket_timeout=2, socket_connect_timeout=2)
     redis_conn.ping()
-    logger.info(f"Connected to Redis at {settings.REDIS_URL}")
     sync_queue = Queue('sync', connection=redis_conn)
-except redis.ConnectionError:
-    logger.warning(f"Could not connect to Redis at {settings.REDIS_URL} during startup.")
-    if settings.DEBUG_MODE:
-        logger.warning("DEBUG_MODE=True. Falling back to MockRedis and MockQueue.")
-        from core.redis_mock import MockRedis, MockQueue
-        redis_conn = MockRedis()
-        sync_queue = MockQueue('sync', connection=redis_conn)
-    else:
-        logger.error("DEBUG_MODE=False. Queue will not work.")
-        redis_conn = None
-        sync_queue = None
+    logger.info(f"Successfully connected to Redis at {redis_url}")
+except Exception as e:
+    logger.error(f"Redis connection failed: {e}")

@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RQ Dashboard (Mockup Mode)</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(17, 24, 39, 0.75);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.35);
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.25);
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --purple: #8b5cf6;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.08) 0px, transparent 50%),
+                radial-gradient(at 50% 0%, rgba(139, 92, 246, 0.05) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.05) 0px, transparent 50%);
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(11, 15, 25, 0.8);
+            backdrop-filter: blur(8px);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            width: 2.2rem;
+            height: 2.2rem;
+            background: linear-gradient(135deg, var(--primary), var(--purple));
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: white;
+            font-size: 1.2rem;
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            letter-spacing: -0.025em;
+            background: linear-gradient(to right, #ffffff, #d1d5db);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: var(--success);
+            padding: 0.35rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            box-shadow: 0 0 10px var(--success-glow);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--success);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); opacity: 0.5; }
+            50% { transform: scale(1.15); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.5; }
+        }
+
+        main {
+            flex: 1;
+            padding: 2rem;
+            max-width: 1400px;
+            width: 100%;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 2rem;
+        }
+
+        @media (min-width: 1024px) {
+            main {
+                grid-template-columns: 3fr 1fr;
+            }
+        }
+
+        .left-column {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .right-column {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        /* Glassmorphic Card Style */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            transition: border-color 0.3s;
+        }
+
+        .card:hover {
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 0.75rem;
+        }
+
+        .card-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+        }
+
+        .metric-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .metric-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .metric-value.highlight {
+            color: var(--primary);
+        }
+
+        /* Action Buttons */
+        .actions-group {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .btn {
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+        }
+
+        .btn-primary:hover {
+            background-color: #2563eb;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background-color: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+        }
+
+        .btn-danger:hover {
+            background-color: var(--danger);
+            color: white;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+            transform: translateY(-1px);
+        }
+
+        /* Table Styles */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+
+        th {
+            color: var(--text-muted);
+            font-weight: 500;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+
+        td {
+            padding: 0.9rem 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            color: var(--text-main);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr.clickable-row {
+            cursor: pointer;
+            transition: background-color 0.15s;
+        }
+
+        tr.clickable-row:hover {
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.2rem 0.6rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: capitalize;
+        }
+
+        .badge-queued {
+            background: rgba(156, 163, 175, 0.1);
+            color: var(--text-muted);
+            border: 1px solid rgba(156, 163, 175, 0.2);
+        }
+
+        .badge-started {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--primary);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            animation: pulse-border 1.5s infinite;
+        }
+
+        .badge-finished {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .badge-failed {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        @keyframes pulse-border {
+            0% { border-color: rgba(59, 130, 246, 0.2); }
+            50% { border-color: rgba(59, 130, 246, 0.6); }
+            100% { border-color: rgba(59, 130, 246, 0.2); }
+        }
+
+        /* Mono typography for code values */
+        .code-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: #d1d5db;
+        }
+
+        .time-text {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        /* Worker list item */
+        .worker-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .worker-name {
+            font-weight: 500;
+            font-size: 0.85rem;
+        }
+
+        .worker-status {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.8rem;
+        }
+
+        .worker-status.idle { color: var(--success); }
+        .worker-status.busy { color: var(--primary); }
+
+        .worker-status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+        .worker-status.idle .worker-status-dot { background-color: var(--success); }
+        .worker-status.busy .worker-status-dot { background-color: var(--primary); animation: pulse 1.2s infinite; }
+
+        /* Redis Keys list */
+        .key-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.8rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+        }
+
+        .key-name {
+            font-family: 'JetBrains Mono', monospace;
+            color: #e5e7eb;
+        }
+
+        .key-type {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 0.1rem 0.35rem;
+            border-radius: 3px;
+            color: var(--text-muted);
+        }
+
+        /* Modal styling */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal {
+            background: #111827;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1rem;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            padding: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            transform: scale(0.95);
+            transition: transform 0.2s ease;
+        }
+
+        .modal-overlay.active .modal {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 0.5rem;
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        .modal-close:hover {
+            color: white;
+        }
+
+        .modal-detail-row {
+            margin-bottom: 1rem;
+        }
+
+        .modal-detail-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: 0.25rem;
+        }
+
+        .modal-detail-val {
+            font-size: 0.9rem;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .modal-detail-val.code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+        }
+
+        .modal-detail-val.error {
+            color: var(--danger);
+            border-color: rgba(239, 68, 68, 0.15);
+            background: rgba(239, 68, 68, 0.03);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-area">
+            <div class="logo-icon">RQ</div>
+            <h1>Mockup Redis Queue Dashboard</h1>
+        </div>
+        <div class="status-badge">
+            <div class="status-dot"></div>
+            <span>Mock Mode Active</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- Left Side: Queue info & Jobs -->
+        <div class="left-column">
+            <!-- Metrics Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3.5a.5.5 0 0 1-.5-.5v-4A.5.5 0 0 1 8 4z"/></svg>
+                        Queue status Overview
+                    </div>
+                    <div class="actions-group">
+                        <button class="btn btn-primary" onclick="enqueueTestJob()">
+                            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3.5a.5.5 0 0 1-.5-.5v-4A.5.5 0 0 1 8 4z"/></svg>
+                            Enqueue Test Job
+                        </button>
+                        <button class="btn btn-danger" onclick="flushQueue()">
+                            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+                            Flush Queue
+                        </button>
+                    </div>
+                </div>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-label">Queue Name</div>
+                        <div class="metric-value highlight" id="metric-queue-name">sync</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Queued Jobs</div>
+                        <div class="metric-value" id="metric-queued">0</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Workers Online</div>
+                        <div class="metric-value" id="metric-workers">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Jobs List Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Jobs List (Mock Redis)</div>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Job ID</th>
+                                <th>Function</th>
+                                <th>Status</th>
+                                <th>Enqueued At</th>
+                            </tr>
+                        </thead>
+                        <tbody id="jobs-tbody">
+                            <tr>
+                                <td colspan="4" style="text-align: center; color: var(--text-muted);">No jobs in the mock queue. Click "Enqueue Test Job" to create one.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Side: Workers & Keys -->
+        <div class="right-column">
+            <!-- Workers List Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Workers</div>
+                </div>
+                <div id="workers-list">
+                    <div style="text-align: center; color: var(--text-muted); font-size: 0.85rem;">No workers active.</div>
+                </div>
+            </div>
+
+            <!-- Redis Keys list Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Redis Keys (rq:*)</div>
+                    <div class="badge badge-queued" style="font-size: 0.65rem;" id="keys-count">0 keys</div>
+                </div>
+                <div id="keys-list" style="display: flex; flex-direction: column;">
+                    <div style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 0.5rem 0;">No keys stored.</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal for Job detail inspection -->
+    <div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modal-title" style="font-size: 1.1rem; font-weight:600;">Job details</h3>
+                <button class="modal-close" onclick="closeModal(event)">&times;</button>
+            </div>
+            
+            <div class="modal-detail-row">
+                <div class="modal-detail-label">Job ID</div>
+                <div class="modal-detail-val code" id="job-detail-id"></div>
+            </div>
+            
+            <div class="modal-detail-row">
+                <div class="modal-detail-label">Function Name</div>
+                <div class="modal-detail-val code" id="job-detail-func"></div>
+            </div>
+
+            <div class="modal-detail-row">
+                <div class="modal-detail-label">Status</div>
+                <div><span class="badge" id="job-detail-status"></span></div>
+            </div>
+
+            <div class="modal-detail-row">
+                <div class="modal-detail-label">Arguments</div>
+                <div class="modal-detail-val code" id="job-detail-args"></div>
+            </div>
+
+            <div class="modal-detail-row">
+                <div class="modal-detail-label">Metadata / Context</div>
+                <div class="modal-detail-val code" id="job-detail-meta"></div>
+            </div>
+
+            <div class="modal-detail-row">
+                <div class="modal-detail-label">Enqueued At</div>
+                <div class="modal-detail-val code" id="job-detail-enqueued"></div>
+            </div>
+            
+            <div class="modal-detail-row" id="started-row">
+                <div class="modal-detail-label">Started At</div>
+                <div class="modal-detail-val code" id="job-detail-started"></div>
+            </div>
+
+            <div class="modal-detail-row" id="ended-row">
+                <div class="modal-detail-label">Ended At</div>
+                <div class="modal-detail-val code" id="job-detail-ended"></div>
+            </div>
+
+            <div class="modal-detail-row" id="exception-row" style="display: none;">
+                <div class="modal-detail-label">Exceptions / Error Trace</div>
+                <div class="modal-detail-val code error" id="job-detail-exception"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchAPI(url, options = {}) {
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    throw new Error(`HTTP Error: ${response.status}`);
+                }
+                return await response.json();
+            } catch (err) {
+                console.error("API Call Failed:", err);
+                return null;
+            }
+        }
+
+        async function updateDashboard() {
+            // 1. Fetch Queue & Workers Status
+            const statusData = await fetchAPI('/api/v1/debug/queue/status');
+            if (statusData) {
+                document.getElementById('metric-queue-name').textContent = statusData.queue_name || 'sync';
+                document.getElementById('metric-queued').textContent = statusData.queued ?? 0;
+                document.getElementById('metric-workers').textContent = statusData.workers ? statusData.workers.length : 0;
+                
+                // Render Workers list
+                const wList = document.getElementById('workers-list');
+                if (statusData.workers && statusData.workers.length > 0) {
+                    wList.innerHTML = statusData.workers.map(w => `
+                        <div class="worker-item">
+                            <span class="worker-name code-text">${w.name}</span>
+                            <span class="worker-status ${w.state}">
+                                <span class="worker-status-dot"></span>
+                                ${w.state}
+                            </span>
+                        </div>
+                    `).join('');
+                } else {
+                    wList.innerHTML = '<div style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 0.5rem 0;">No active workers.</div>';
+                }
+            }
+
+            // 2. Fetch Jobs List
+            const jobsData = await fetchAPI('/api/v1/debug/queue/jobs');
+            const tbody = document.getElementById('jobs-tbody');
+            if (jobsData && jobsData.jobs && jobsData.jobs.length > 0) {
+                tbody.innerHTML = jobsData.jobs.map(job => {
+                    const statusClass = `badge-${job.status}`;
+                    const timeStr = job.enqueued_at ? new Date(job.enqueued_at).toLocaleTimeString() : 'N/A';
+                    return `
+                        <tr class="clickable-row" onclick="viewJobDetails('${job.id}')">
+                            <td class="code-text" style="color: var(--primary);">${job.id.substring(0, 8)}...</td>
+                            <td class="code-text">${job.meta && job.meta.username ? 'sync_user: ' + job.meta.username : 'tasks.sync_user'}</td>
+                            <td><span class="badge ${statusClass}">${job.status}</span></td>
+                            <td class="time-text">${timeStr}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1.5rem 0;">
+                            No jobs in the mock queue. Click "Enqueue Test Job" to create one.
+                        </td>
+                    </tr>
+                `;
+            }
+
+            // 3. Fetch Redis Keys
+            const keysData = await fetchAPI('/api/v1/debug/redis/keys');
+            if (keysData) {
+                document.getElementById('keys-count').textContent = `${keysData.total_keys} keys`;
+                const keysList = document.getElementById('keys-list');
+                if (keysData.keys && keysData.keys.length > 0) {
+                    keysList.innerHTML = keysData.keys.map(k => `
+                        <div class="key-item">
+                            <span class="key-name">${k.key}</span>
+                            <span class="key-type">${k.type}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    keysList.innerHTML = '<div style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 0.5rem 0;">No keys stored.</div>';
+                }
+            }
+        }
+
+        async function enqueueTestJob() {
+            const res = await fetchAPI('/api/v1/debug/queue/test-enqueue', { method: 'POST' });
+            if (res && res.status === 'success') {
+                updateDashboard();
+            }
+        }
+
+        async function flushQueue() {
+            if (confirm("Are you sure you want to flush the Mock Redis queue? This will delete all enqueued and finished mock jobs.")) {
+                const res = await fetchAPI('/api/v1/debug/queue/flush', { method: 'DELETE' });
+                if (res && res.status === 'success') {
+                    updateDashboard();
+                }
+            }
+        }
+
+        async function viewJobDetails(jobId) {
+            const job = await fetchAPI(`/api/v1/debug/queue/jobs/${jobId}`);
+            if (job) {
+                document.getElementById('job-detail-id').textContent = job.job_id;
+                document.getElementById('job-detail-func').textContent = job.func_name;
+                
+                const statusBadge = document.getElementById('job-detail-status');
+                statusBadge.textContent = job.status;
+                statusBadge.className = `badge badge-${job.status}`;
+                
+                document.getElementById('job-detail-args').textContent = job.args;
+                document.getElementById('job-detail-meta').textContent = JSON.stringify(job.meta, null, 2);
+                document.getElementById('job-detail-enqueued').textContent = job.enqueued_at ? new Date(job.enqueued_at).toLocaleString() : 'N/A';
+                
+                // Started/Ended
+                if (job.started_at) {
+                    document.getElementById('started-row').style.display = 'block';
+                    document.getElementById('job-detail-started').textContent = new Date(job.started_at).toLocaleString();
+                } else {
+                    document.getElementById('started-row').style.display = 'none';
+                }
+
+                if (job.ended_at) {
+                    document.getElementById('ended-row').style.display = 'block';
+                    document.getElementById('job-detail-ended').textContent = new Date(job.ended_at).toLocaleString();
+                } else {
+                    document.getElementById('ended-row').style.display = 'none';
+                }
+
+                // Exception
+                const excRow = document.getElementById('exception-row');
+                if (job.exc_info) {
+                    excRow.style.display = 'block';
+                    document.getElementById('job-detail-exception').textContent = job.exc_info;
+                } else {
+                    excRow.style.display = 'none';
+                }
+                
+                document.getElementById('modal-overlay').classList.add('active');
+            }
+        }
+
+        function closeModal(event) {
+            document.getElementById('modal-overlay').classList.remove('active');
+        }
+
+        // Poll every 2 seconds
+        setInterval(updateDashboard, 2000);
+        
+        // Initial load
+        window.addEventListener('DOMContentLoaded', updateDashboard);
+    </script>
+</body>
+</html>

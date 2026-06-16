@@ -31,14 +31,47 @@ class RequesterInfoSchema(BaseModel):
     address: str
     zip_code: str
 
-class UserSyncRequest(BaseModel):
+class WorkflowControlSchema(BaseModel):
+    enable_ad_creation: bool = True
+    enable_papercut_sync: bool = True
+    enable_microsoft_365_license: bool = True
+    enable_send_email: bool = True
+
+class ADProfileSchema(BaseModel):
+    custom_username: str
+    target_ou: str
+    custom_attributes: Dict[str, Any]
+
+class PapercutProfileSchema(BaseModel):
+    print_code: str
+
+class Microsoft365License(BaseModel):
+    skuId: str
+    skuPartNumber: str
+
+class Microsoft365LicensesSchema(BaseModel):
+    SkuId_id: List[Microsoft365License]
+
+class EmailProfileSchema(BaseModel):
+    emailSubject: str
+    emailTo: str
+    emailCc: str
+    emailBody: str
+
+class TaskDataSchema(BaseModel):
+    ad_profile: ADProfileSchema
+    papercut_profile: PapercutProfileSchema
+    microsoft_365_licenses: Optional[Microsoft365LicensesSchema] = None
+    email_profile: Optional[EmailProfileSchema] = None
+
+class MetadataSchema(BaseModel):
     document_info: DocumentInfoSchema
     requester_info: RequesterInfoSchema
-    custom_username: Optional[str] = Field(None, description="Optional custom sAMAccountName. If not provided, it will be generated from English name.")
-    custom_print_code: Optional[str] = Field(None, description="Optional print code/PIN. If not provided, employee ID will be used.")
-    is_contractor: bool = Field(False, description="Flag indicating if the user should be placed in the Contract OU instead of New Hire.")
-    target_ou: Optional[str] = Field(None, description="Optional target OU/folder Distinguished Name.")
-    custom_attributes: Optional[Dict[str, Any]] = Field(None, description="Optional extra custom attributes mapping for ADUC validation testing.")
+
+class UserSyncRequest(BaseModel):
+    metadata: MetadataSchema
+    workflow_control: WorkflowControlSchema
+    task_data: TaskDataSchema
 
 @router.get("/ad/check-user", status_code=status.HTTP_200_OK)
 def check_user(query: str, exact: bool = False):
@@ -48,8 +81,32 @@ def check_user(query: str, exact: bool = False):
     exact=false: Check name/displayName/sAMAccountName (manager check)
     """
     try:
-        exists = ad_service.check_user_exists(query, exact)
-        return {"exists": exists}
+        exists, username = ad_service.check_user_exists_with_username(query, exact)
+        return {"exists": exists, "username": username}
+    except ActiveDirectoryError as ae:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Active Directory Query Failed: {str(ae)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred: {str(e)}"
+        )
+
+@router.get("/ad/details", status_code=status.HTTP_200_OK)
+def get_user_details(dn: str):
+    """
+    Get detailed attributes of a user in Active Directory.
+    """
+    try:
+        details = ad_service.get_user_details(dn)
+        if not details:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User with DN '{dn}' not found in Active Directory."
+            )
+        return details
     except ActiveDirectoryError as ae:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -125,7 +182,10 @@ def get_ad_tree(parent_dn: Optional[str] = None):
     """
     try:
         nodes = ad_service.get_ad_tree(parent_dn)
-        return {"nodes": nodes}
+        return {
+            "nodes": nodes,
+            "base_dn": ad_service.base_dn
+        }
     except ActiveDirectoryError as ae:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

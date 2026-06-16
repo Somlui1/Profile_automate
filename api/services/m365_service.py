@@ -10,6 +10,12 @@ class M365Service:
         self.client_id = settings.M365_CLIENT_ID
         self.client_secret = settings.M365_CLIENT_SECRET
 
+    @property
+    def mock_mode(self) -> bool:
+        if settings.SYSTEM_MODE == "mock":
+            return True
+        return not (self.tenant_id and self.client_id and self.client_secret)
+
     def get_access_token(self) -> str:
         """Requests OAuth2 access token for Microsoft Graph API."""
         token_url = f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/token"
@@ -33,57 +39,58 @@ class M365Service:
         If Graph API call fails or credentials are empty, returns rich mock data
         to guarantee a seamless fallback presentation.
         """
-        access_token = self.get_access_token()
-        
-        if access_token:
-            graph_url = "https://graph.microsoft.com/v1.0/subscribedSkus"
-            headers = {
-                "Authorization": f"Bearer {access_token}",
-                "Accept": "application/json",
-            }
-            try:
-                response = requests.get(graph_url, headers=headers, timeout=3)
-                response.raise_for_status()
-                sku_data = response.json().get("value", [])
-                
-                if sku_data:
-                    licenses = []
-                    total_types = len(sku_data)
-                    in_stock = 0
-                    out_of_stock = 0
+        if not self.mock_mode:
+            access_token = self.get_access_token()
+            
+            if access_token:
+                graph_url = "https://graph.microsoft.com/v1.0/subscribedSkus"
+                headers = {
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept": "application/json",
+                }
+                try:
+                    response = requests.get(graph_url, headers=headers, timeout=3)
+                    response.raise_for_status()
+                    sku_data = response.json().get("value", [])
                     
-                    for sku in sku_data:
-                        sku_name = sku.get("skuPartNumber", "UNKNOWN_SKU")
-                        total_units = sku.get("prepaidUnits", {}).get("enabled", 0)
-                        consumed_units = sku.get("consumedUnits", 0)
-                        available_units = max(0, total_units - consumed_units)
+                    if sku_data:
+                        licenses = []
+                        total_types = len(sku_data)
+                        in_stock = 0
+                        out_of_stock = 0
                         
-                        status = "Available" if available_units > 0 else "Out of Stock"
-                        if status == "Available":
-                            in_stock += 1
-                        else:
-                            out_of_stock += 1
+                        for sku in sku_data:
+                            sku_name = sku.get("skuPartNumber", "UNKNOWN_SKU")
+                            total_units = sku.get("prepaidUnits", {}).get("enabled", 0)
+                            consumed_units = sku.get("consumedUnits", 0)
+                            available_units = max(0, total_units - consumed_units)
                             
-                        licenses.append({
-                            "skuId": sku.get("skuId"),
-                            "skuPartNumber": sku_name,
-                            "prepaidUnits": total_units,
-                            "consumedUnits": consumed_units,
-                            "availableUnits": available_units,
-                            "status": status
-                        })
-                        
-                    return {
-                        "is_mock": False,
-                        "summary": {
-                            "total_product_types": total_types,
-                            "in_stock": in_stock,
-                            "out_of_stock": out_of_stock
-                        },
-                        "licenses": licenses
-                    }
-            except Exception as e:
-                logger.warning(f"Error fetching licenses from Microsoft Graph. Falling back to mock data: {e}")
+                            status = "Available" if available_units > 0 else "Out of Stock"
+                            if status == "Available":
+                                in_stock += 1
+                            else:
+                                out_of_stock += 1
+                                
+                            licenses.append({
+                                "skuId": sku.get("skuId"),
+                                "skuPartNumber": sku_name,
+                                "prepaidUnits": total_units,
+                                "consumedUnits": consumed_units,
+                                "availableUnits": available_units,
+                                "status": status
+                            })
+                            
+                        return {
+                            "is_mock": False,
+                            "summary": {
+                                "total_product_types": total_types,
+                                "in_stock": in_stock,
+                                "out_of_stock": out_of_stock
+                            },
+                            "licenses": licenses
+                        }
+                except Exception as e:
+                    logger.warning(f"Error fetching licenses from Microsoft Graph. Falling back to mock data: {e}")
         
         # Premium Fallback Mock Data: 18 items (10 Available / In Stock, 8 Out of Stock)
         mock_skus = [

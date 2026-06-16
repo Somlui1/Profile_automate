@@ -51,6 +51,10 @@ export const ADExplorerTab: React.FC<ADExplorerTabProps> = ({ users, config }) =
   const [detailsList, setDetailsList] = useState<ADNode[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
   
+  // User Profile from API
+  const [selectedUserProfile, setSelectedUserProfile] = useState<DirectoryUser | null>(null);
+  const [loadingUserProfile, setLoadingUserProfile] = useState(false);
+  
   // Left Tree input filter
   const [filterText, setFilterText] = useState('');
 
@@ -66,6 +70,65 @@ export const ADExplorerTab: React.FC<ADExplorerTabProps> = ({ users, config }) =
   useEffect(() => {
     loadDetailsList(selectedDN);
   }, [selectedDN, users]);
+
+  // Fetch user profile from API whenever selectedNode changes to a user
+  useEffect(() => {
+    if (selectedNode && selectedNode.type === 'user') {
+      const localProfile = getSelectedUserProfile();
+      if (localProfile) {
+        setSelectedUserProfile(localProfile);
+      } else {
+        fetchUserProfile(selectedNode.dn);
+      }
+    } else {
+      setSelectedUserProfile(null);
+    }
+  }, [selectedNode, users]);
+
+  const getUnknownUserProfile = (dn: string): DirectoryUser => {
+    const parts = dn.split(',');
+    const cnPart = parts[0] || '';
+    const name = cnPart.toUpperCase().startsWith('CN=') ? cnPart.substring(3) : cnPart;
+    return {
+      uid: "unknown",
+      name: name || "unknown",
+      email: "unknown",
+      title: "unknown",
+      dept: "unknown",
+      printCode: "unknown",
+      ou: parts.slice(1).join(',') || "unknown",
+      papercut: "unknown",
+      status: "unknown",
+      mobile: "unknown",
+      company: "unknown",
+      manager: "unknown",
+      office: "unknown",
+      description: "unknown",
+      street: "unknown",
+      city: "unknown",
+      state: "unknown",
+      zipCode: "unknown",
+      country: "unknown"
+    };
+  };
+
+  const fetchUserProfile = async (dn: string) => {
+    setLoadingUserProfile(true);
+    try {
+      const response = await fetch(`/api/v1/user/ad/details?dn=${encodeURIComponent(dn)}`);
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedUserProfile(data);
+      } else {
+        setSelectedUserProfile(getUnknownUserProfile(dn));
+      }
+    } catch (e) {
+      console.error("Error fetching AD user details:", e);
+      setSelectedUserProfile(getUnknownUserProfile(dn));
+    } finally {
+      setLoadingUserProfile(false);
+    }
+  };
 
   const loadRootNodes = async () => {
     try {
@@ -275,33 +338,7 @@ export const ADExplorerTab: React.FC<ADExplorerTabProps> = ({ users, config }) =
       if (found) return found;
     }
 
-    // 3. Last fallback, return a mock user profile generated on the fly for complete demonstration
-    const names = selectedNode.name.split(' ');
-    const firstName = names[0] || selectedNode.name;
-    const lastName = names.slice(1).join(' ') || "Staff";
-    const logonName = `${firstName.toLowerCase()}.${(lastName[0] || "s").toLowerCase()}`;
-
-    return {
-      uid: logonName,
-      name: selectedNode.name,
-      email: `${logonName}@aapico.com`,
-      title: "Staff Member",
-      dept: "Operations",
-      printCode: "990011",
-      ou: selectedNode.dn.substring(selectedNode.dn.indexOf(',') + 1) || "OU=Users,DC=aapico,DC=com",
-      papercut: "Synced",
-      status: "Active",
-      mobile: "+66 (0) 81 234 5678",
-      company: "AAPICO Hitech PLC",
-      manager: "Somsak Sombat",
-      office: "AAPICO HQ - Building A",
-      description: "Auto Synced Active Directory Organizational Unit Object",
-      street: "99 Moo 1 Hitech Industrial Estate, Tambol Ban Len",
-      city: "Bang Pa-In",
-      state: "Phranakhon Sri Ayutthaya",
-      zipCode: "13160",
-      country: "Thailand"
-    };
+    return null;
   };
 
   // Render tree layout with filter capabilities
@@ -404,7 +441,7 @@ export const ADExplorerTab: React.FC<ADExplorerTabProps> = ({ users, config }) =
     });
   };
 
-  const selectedUser = getSelectedUserProfile();
+  const selectedUser = selectedUserProfile;
   const rawBreadcrumbs = getBreadcrumbs(selectedDN);
 
   return (
@@ -489,10 +526,16 @@ export const ADExplorerTab: React.FC<ADExplorerTabProps> = ({ users, config }) =
         {/* RIGHT PANEL: OU Children Contents OR Detailed tabbed user attributes */}
         <section className="col-span-12 lg:col-span-8 bg-white border border-outline-variant rounded-xl flex flex-col overflow-hidden shadow-sm h-full">
           
-          {selectedNode && selectedNode.type === 'user' && selectedUser ? (
-            
-            /* VIEW A: Tabbed User Object profiles */
-            <div className="flex flex-col h-full overflow-hidden">
+          {selectedNode && selectedNode.type === 'user' ? (
+            loadingUserProfile ? (
+              <div className="flex-grow flex flex-col items-center justify-center h-full">
+                <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+                <span className="text-xs text-slate-500 font-headline">Querying Active Directory user details...</span>
+              </div>
+            ) : selectedUser ? (
+              
+              /* VIEW A: Tabbed User Object profiles */
+              <div className="flex flex-col h-full overflow-hidden">
               
               {/* Profile Card Header */}
               <div className="p-5.5 bg-surface-container-low border-b border-outline-variant flex items-start gap-4">
@@ -874,7 +917,11 @@ export const ADExplorerTab: React.FC<ADExplorerTabProps> = ({ users, config }) =
               </div>
 
             </div>
-
+            ) : (
+              <div className="flex-grow flex items-center justify-center h-full">
+                <span className="text-sm text-slate-400 italic">User details load failed.</span>
+              </div>
+            )
           ) : (
             
             /* VIEW B: Table List display for OUs / Domain nodes */

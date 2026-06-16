@@ -4,29 +4,29 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  DirectoryUser, 
-  ADGroup, 
-  M365Sku, 
+import {
+  DirectoryUser,
+  ADGroup,
+  M365Sku,
   ToastMessage,
   SystemConfig
 } from '../types';
 import { ADUCTree } from './ADUCTree';
-import { 
-  Upload, 
-  ArrowLeft, 
-  ArrowRight, 
-  RefreshCw, 
-  Share2, 
-  CheckCircle, 
-  Mail, 
-  Lock, 
-  Eye, 
-  EyeOff, 
-  Search, 
-  Group, 
-  Plus, 
-  Play, 
+import {
+  Upload,
+  ArrowLeft,
+  ArrowRight,
+  RefreshCw,
+  Share2,
+  CheckCircle,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Search,
+  Group,
+  Plus,
+  Play,
   Calendar,
   X,
   FileText,
@@ -48,7 +48,10 @@ interface PDFProvisionTabProps {
   onJobCreated?: () => void;
 }
 
-const licenseMapping: Record<string, string> = {
+
+
+// License Map
+const LICENSE_NAME_MAP: Record<string, string> = {
   "ENTERPRISEPACK": "Office 365 E3",
   "SPE_E3": "Microsoft 365 E3",
   "SPE_E5": "Microsoft 365 E5",
@@ -90,11 +93,14 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
   config,
   onJobCreated
 }) => {
-  // Steps configuration: 
+  // steps configuration: 
   // 1: Upload & Extract
   // 2: Verify & Edit Fields
+  // 2.5: Debug Preview
   // 3: Operation Sequence Running
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 2.5 | 3>(1);
+  const [debugTab, setDebugTab] = useState<'visual' | 'schema' | 'json'>('visual');
+
 
   // --- STEP 1 STATE ---
   const [pdfUrl, setPdfUrl] = useState('');
@@ -116,7 +122,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
   const [phone, setPhone] = useState('');
   const [mobile, setMobile] = useState('');
   const [printCode, setPrintCode] = useState('');
-  
+
   const [street, setStreet] = useState('');
   const [city, setCity] = useState('');
   const [stateName, setStateName] = useState('');
@@ -136,11 +142,14 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
   const [pwdResetOnFirstLogon, setPwdResetOnFirstLogon] = useState(true);
   const [accountEnabled, setAccountEnabled] = useState(true);
   const [sendWelcomeEmailToggle, setSendWelcomeEmailToggle] = useState(true);
-  const [enablePapercutSync, setEnablePapercutSync] = useState(true);
-  const [enableM365License, setEnableM365License] = useState(true);
+
+  const [isLoadingLicenses, setIsLoadingLicenses] = useState(true);
+  const [isFetchingLicenses, setIsFetchingLicenses] = useState(false);
+  const [isLoadingTemplate, setIsLoadingTemplate] = useState(true);
 
   // Email Preview Editor
   const [emailTo, setEmailTo] = useState('');
+  const [prevManagerInput, setPrevManagerInput] = useState('');
   const [emailCc, setEmailCc] = useState('it.support@aapico.com');
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
@@ -179,21 +188,27 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
   const [step1Sub, setStep1Sub] = useState<Record<number, string>>({ 1: 'STANDBY', 2: 'STANDBY', 3: 'STANDBY' });
   const [step2Sub, setStep2Sub] = useState<Record<number, string>>({ 1: 'STANDBY', 2: 'STANDBY', 3: 'STANDBY' });
   const [step3Sub, setStep3Sub] = useState<Record<number, string>>({ 1: 'STANDBY', 2: 'STANDBY' });
-  const [step4Progress, setStep4Progress] = useState<'STANDBY' | 'SUCCESS'>('STANDBY');
+  const [step4Sub, setStep4Sub] = useState<Record<number, string>>({ 1: 'STANDBY', 2: 'STANDBY' });
   const [step1ValuePercent, setStep1ValuePercent] = useState(0);
   const [step2ValuePercent, setStep2ValuePercent] = useState(0);
   const [step3ValuePercent, setStep3ValuePercent] = useState(0);
-  const [step1State, setStep1Progress] = useState<'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED'>('STANDBY');
-  const [step2State, setStep2Progress] = useState<'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED'>('STANDBY');
-  const [step3State, setStep3Progress] = useState<'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'>('STANDBY');
-  const [step4State, setStep4ProgressFinal] = useState<'STANDBY' | 'SUCCESS'>('STANDBY');
+  const [step4ValuePercent, setStep4ValuePercent] = useState(0);
+  const [step1State, setStep1State] = useState<'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED'>('STANDBY');
+  const [step2State, setStep2State] = useState<'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED'>('STANDBY');
+  const [step3State, setStep3State] = useState<'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'>('STANDBY');
+  const [step4State, setStep4State] = useState<'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'>('STANDBY');
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Load licenses and email template
   useEffect(() => {
     fetchLicenses();
     fetchEmailTemplate();
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
   }, []);
 
   // Update DisplayName from First and Last Name
@@ -207,6 +222,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
   };
 
   const fetchLicenses = async () => {
+    setIsFetchingLicenses(true);
     try {
       const response = await fetch('/api/v1/m365/licenses');
       if (response.ok) {
@@ -215,6 +231,9 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
       }
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsLoadingLicenses(false);
+      setIsFetchingLicenses(false);
     }
   };
 
@@ -227,6 +246,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
       }
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsLoadingTemplate(false);
     }
   };
 
@@ -271,22 +292,22 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
 
     let bodyStartIndex = 0;
     for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.startsWith("To:")) {
-            const parsedTo = line.replace("To:", "").trim().split('#')[0].trim();
-            if (!parsedTo.includes("supervisor.username@aapico.com")) {
-              toField = parsedTo.replace(/\{supervisor_name\}/g, fields.supervisor_name);
-            }
-        } else if (line.startsWith("Cc:")) {
-            ccField = line.replace("Cc:", "").trim().replace(/\{\{ENV_MAIL_CC\}\}/g, "it.support@aapico.com");
-        } else if (line.startsWith("Subject:")) {
-            subject = line.replace("Subject:", "").trim()
-                .replace(/\{name_english\}/g, fields.name_english)
-                .replace(/\{company\}/g, fields.company);
-        } else if (line.trim().startsWith("Dear Khun")) {
-            bodyStartIndex = i;
-            break;
+      const line = lines[i];
+      if (line.startsWith("To:")) {
+        const parsedTo = line.replace("To:", "").trim().split('#')[0].trim();
+        if (!parsedTo.includes("supervisor.username@aapico.com")) {
+          toField = parsedTo.replace(/\{supervisor_name\}/g, fields.supervisor_name);
         }
+      } else if (line.startsWith("Cc:")) {
+        ccField = line.replace("Cc:", "").trim().replace(/\{\{ENV_MAIL_CC\}\}/g, "it.support@aapico.com");
+      } else if (line.startsWith("Subject:")) {
+        subject = line.replace("Subject:", "").trim()
+          .replace(/\{name_english\}/g, fields.name_english)
+          .replace(/\{company\}/g, fields.company);
+      } else if (line.trim().startsWith("Dear Khun")) {
+        bodyStartIndex = i;
+        break;
+      }
     }
 
     let rawBodyLines = lines.slice(bodyStartIndex).join('\n');
@@ -302,7 +323,10 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
       .replace(/\{Printer_code\}/g, fields.Printer_code)
       .replace(/\{email\}/g, fields.email);
 
-    setEmailTo(toField);
+    if (managerInput !== prevManagerInput) {
+      setPrevManagerInput(managerInput);
+      setEmailTo(toField);
+    }
     setEmailCc(ccField);
     setEmailSubject(subject);
     setEmailBody(dynamicBody.trim());
@@ -314,6 +338,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     email,
     company,
     managerInput,
+    prevManagerInput,
     userPassword,
     mobile,
     printCode,
@@ -433,7 +458,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
       setRawJsonOutput(JSON.stringify(mockResult, null, 4));
       const mapped = mapLocalRawToADSchema(mockResult);
       setMappedJsonOutput(JSON.stringify(mapped, null, 4));
-      
+
       setParsingStatus('success');
       populateFormFromExtractedMap(mapped);
       addToast(`ประมวลผลสแกนรูปแบบ ${name} สำเร็จ`, "success");
@@ -528,7 +553,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     setEmail(attrs.email || '');
     setUsernameLogon(profile.custom_username || '');
     setSelectedDN(profile.target_ou || 'DC=aapico,DC=com');
-    
+
     const ouNameExtMap = profile.target_ou.split(',')[0].replace('OU=', '');
     setSelectedNodeName(ouNameExtMap);
 
@@ -554,11 +579,11 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
       { name: "Domain Users", scope: "Global", desc: "Default domain users security group membership" }
     ]);
 
-    // Choose standard M365 license
+    // Choose standard M365 license — use real skuPartNumber values that match the API
     if (attrs.department && attrs.department.toLowerCase().includes("engineering")) {
-      setSelectedSkuIds(['sku-ems', 'sku-standardpack']);
+      setSelectedSkuIds(['EMS', 'STANDARDPACK']);
     } else {
-      setSelectedSkuIds(['sku-standardpack']);
+      setSelectedSkuIds(['STANDARDPACK']);
     }
   };
 
@@ -632,9 +657,6 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
           setLogonVerification('valid');
           addToast("ชื่อล็อกอินสามารถใช้งานได้", "success");
         }
-      } else {
-        setLogonVerification('invalid');
-        addToast("ล้มเหลวในการตรวจสอบ LDAP ADUC (Server Error)", "error");
       }
     } catch (e) {
       setLogonVerification('invalid');
@@ -656,13 +678,13 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
         if (data.exists) {
           setManagerVerification('valid');
           addToast("พบผู้จัดการรายนี้ในระบบ AD (Verified)", "success");
+          if (data.username) {
+            setEmailTo(`${data.username}@aapico.com`);
+          }
         } else {
           setManagerVerification('invalid');
           addToast("ไม่พบผู้จัดการรายนี้ในสารบบ LDAP", "warning");
         }
-      } else {
-        setManagerVerification('invalid');
-        addToast("ไม่พบข้อมูลผู้จัดการในระบบ AD", "warning");
       }
     } catch (e) {
       setManagerVerification('invalid');
@@ -765,6 +787,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
   };
 
   // --- M365 CHIPS TRIGGERS ---
+  // selectedSkuIds tracks by skuPartNumber for UI toggle simplicity.
+  // The actual payload is built with full {skuId, skuPartNumber} objects via buildProvisionPayload.
   const handleToggleLicense = (sku: M365Sku) => {
     if (sku.availableUnits <= 0) return;
     const isSelected = selectedSkuIds.includes(sku.skuPartNumber);
@@ -775,33 +799,40 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     }
   };
 
-  // --- RUN PIPELINE MULTI-STEP LOOPS ---
-  const handleSequenceStart = async () => {
-    // Collect variables
-    const calculatedPin = printCode || mobile.replace(/\D/g, '').slice(-6) || "N/A";
+  // --- PAYLOAD CONSTRUCTION ---
+  const buildProvisionPayload = () => {
+    const calculatedPin = printCode || mobile.replace(/\D/g, '').slice(-6) || description || "N/A";
+    const hasPrintCode = !!printCode && printCode.trim() !== "";
+    const hasLicenses = selectedSkuIds.length > 0;
+    const hasEmailSend = !!sendWelcomeEmailToggle;
 
-    const payload = {
+    return {
       metadata: {
         document_info: {
-          date: new Date().toLocaleDateString('th-TH'),
+          date: new Date().toLocaleDateString('en-US'),
           doc_no: "AUTO-" + Date.now().toString().slice(-6)
         },
         requester_info: {
-          name_english: `${firstName} ${lastName}`.trim() || 'New Employee',
           company: company || "AAPICO",
+          name_thai: displayName || `${firstName} ${lastName}`.trim() || "New Employee",
+          name_english: `${firstName} ${lastName}`.trim() || "New Employee",
           employee_id: description || "EMP" + Date.now().toString().slice(-4),
-          position: jobTitle,
-          department: department,
-          mobile_phone: mobile,
-          address: street,
-          zip_code: zipCode
+          position: jobTitle || "Staff",
+          department_group: department || "Staff",
+          department: department || "Staff",
+          ext: "N/A",
+          mobile_phone: mobile || "N/A",
+          supervisor_name: managerInput || "Supervisor",
+          supervisor_position: "Supervisor",
+          address: street || "N/A",
+          zip_code: zipCode || "13160"
         }
       },
       workflow_control: {
         enable_ad_creation: true,
-        enable_papercut_sync: enablePapercutSync,
-        enable_microsoft_365_license: enableM365License,
-        enable_send_email: sendWelcomeEmailToggle
+        enable_papercut_sync: hasPrintCode,
+        enable_microsoft_365_license: hasLicenses,
+        enable_send_email: hasEmailSend
       },
       task_data: {
         ad_profile: {
@@ -811,38 +842,85 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
             first_name: firstName,
             last_name: lastName,
             display_name: displayName,
+            description: description,
+            office: company || "",
+            telephone_number: phone || "{To be specified in Step 2}",
             email: email,
-            licenses: selectedSkuIds,
-            manager: managerInput
+            mobile: mobile,
+            title: jobTitle,
+            department: department,
+            company: company,
+            manager: managerInput,
+            street: street,
+            city: city,
+            state_province: stateName,
+            zip_postal_code: zipCode,
+            country_region: country,
+            profile_path: profilePath || "{To be specified in Step 2}",
+            logon_script: logonScript || "{To be specified in Step 2}",
+            change_password_next_logon: true,
+            account_disabled: false,
+            password: "P@ssw0rd$",
+            user_principal_name: email
           }
         },
         papercut_profile: {
-          print_code: calculatedPin
+          print_code: printCode
+        },
+        microsoft_365_licenses: {
+          SkuId_id: selectedSkuIds.map((partNumber) => {
+            const found = licenses.find((l) => l.skuPartNumber === partNumber);
+            return {
+              skuId: found?.skuId || partNumber,
+              skuPartNumber: partNumber
+            };
+          })
         },
         email_profile: {
-          emailTo,
-          emailCc,
-          emailSubject,
-          emailBody
+          emailSubject: emailSubject,
+          emailTo: emailTo,
+          emailCc: emailCc,
+          emailBody: emailBody
         }
       }
     };
+  };
+
+  type StepState = 'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
+  const getStageStyle = (state: StepState) => {
+    const styles: Record<StepState, { card: string; icon: string; badge: string; badgeLabel: string }> = {
+      RUNNING: { card: 'border-primary bg-primary/5 shadow-md ring-1 ring-primary/20', icon: 'bg-primary-container/10 border-primary text-primary animate-pulse shadow-sm', badge: 'bg-primary text-white animate-pulse', badgeLabel: 'RUNNING' },
+      SUCCESS: { card: 'border-secondary bg-white shadow-sm', icon: 'bg-secondary/10 border-secondary text-secondary', badge: 'bg-secondary/15 text-secondary', badgeLabel: 'COMPLETED' },
+      FAILED: { card: 'border-error bg-error/5 shadow-sm', icon: 'bg-error/10 border-error text-error', badge: 'bg-error text-white', badgeLabel: 'FAILED' },
+      SKIPPED: { card: 'border-slate-300 opacity-60 bg-slate-50 shadow-none', icon: 'bg-slate-100 border-slate-300 text-slate-400', badge: 'bg-slate-300 text-slate-700', badgeLabel: 'SKIPPED' },
+      STANDBY: { card: 'border-slate-200 opacity-60 bg-slate-50', icon: 'bg-slate-100 border-slate-300 text-slate-400', badge: 'bg-slate-200 text-slate-500', badgeLabel: 'STANDBY' },
+    };
+    return styles[state];
+  };
+
+  // --- RUN PIPELINE MULTI-STEP LOOPS ---
+  const handleSequenceStart = async () => {
+    // Collect variables
+    const payload = buildProvisionPayload();
+    const calculatedPin = payload.task_data.papercut_profile.print_code;
 
     // Initialize pipeline states
     setCurrentPipelineStep(1);
     setPipelineOverallState('PROCESSING');
     setTerminalLogs([`[${new Date().toLocaleTimeString()}] // REST API Pipeline initiated...`]);
-    setStep1Progress('STANDBY');
-    setStep2Progress('STANDBY');
-    setStep3Progress('STANDBY');
-    setStep4ProgressFinal('STANDBY');
+    setStep1State('STANDBY');
+    setStep2State('STANDBY');
+    setStep3State('STANDBY');
+    setStep4State('STANDBY');
     setStep1ValuePercent(0);
     setStep2ValuePercent(0);
     setStep3ValuePercent(0);
+    setStep4ValuePercent(0);
 
     setStep1Sub({ 1: 'STANDBY', 2: 'STANDBY', 3: 'STANDBY' });
     setStep2Sub({ 1: 'STANDBY', 2: 'STANDBY', 3: 'STANDBY' });
     setStep3Sub({ 1: 'STANDBY', 2: 'STANDBY' });
+    setStep4Sub({ 1: 'STANDBY', 2: 'STANDBY' });
 
     // Switch view bounds
     setCurrentStep(3);
@@ -850,115 +928,187 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     // Call actual job creation endpoint (REST database registration)
     try {
       addLog("JOB", `ลงทะเบียน Task Provisioning ใหม่ในคิวประมวณผล: ${payload.metadata.requester_info.name_english}`, "INFO");
-      const jobResponse = await fetch('/api/v1/jobs', {
+      const jobResponse = await fetch('/api/v1/jobs/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (jobResponse.ok && onJobCreated) {
+
+      if (!jobResponse.ok) {
+        throw new Error(`Failed to create sync job: ${jobResponse.statusText}`);
+      }
+
+      const jobData = await jobResponse.json();
+      const jobId = jobData.job_id || jobData.job?.id;
+      if (!jobId) {
+        throw new Error("Job ID was not returned from the server");
+      }
+
+      setTerminalData(`[JOB QUEUED] Job registered with ID: ${jobId}`);
+
+      if (onJobCreated) {
         onJobCreated();
       }
-    } catch (e) {
+
+      // Start EventSource stream for real-time logs
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+
+      const sse = new EventSource(`/api/v1/jobs/${jobId}/stream`);
+      eventSourceRef.current = sse;
+
+      sse.addEventListener("step_update", (event) => {
+        try {
+          const log = JSON.parse(event.data);
+          const { step, status, message } = log;
+
+          setTerminalData(`[${step.toUpperCase()}] ${message}`);
+
+          // Update individual step progress states
+          if (step === 'ad_creation') {
+            if (status === 'running') {
+              setStep1State('RUNNING');
+              if (message.includes("Connecting")) {
+                setStep1Sub(prev => ({ ...prev, 1: 'RUNNING' }));
+                setStep1ValuePercent(15);
+              } else if (message.includes("handshake")) {
+                setStep1Sub(prev => ({ ...prev, 1: 'SUCCESS' }));
+                setStep1ValuePercent(30);
+              } else if (message.includes("naming") || message.includes("sAMAccountName")) {
+                setStep1Sub(prev => ({ ...prev, 2: 'RUNNING' }));
+                setStep1ValuePercent(50);
+              } else if (message.includes("LDAP SUCCESS") || message.includes("Verify Pass")) {
+                setStep1Sub(prev => ({ ...prev, 2: 'SUCCESS' }));
+                setStep1Sub(prev => ({ ...prev, 3: 'RUNNING' }));
+                setStep1ValuePercent(85);
+              }
+            } else if (status === 'success') {
+              setStep1State('SUCCESS');
+              setStep1Sub({ 1: 'SUCCESS', 2: 'SUCCESS', 3: 'SUCCESS' });
+              setStep1ValuePercent(100);
+            } else if (status === 'failed') {
+              setStep1State('FAILED');
+            }
+          } else if (step === 'papercut_sync') {
+            if (status === 'running') {
+              setStep2State('RUNNING');
+              if (message.includes("Triggered global PaperCut sync")) {
+                setStep2Sub(prev => ({ ...prev, 1: 'RUNNING' }));
+                setStep2ValuePercent(25);
+              } else if (message.includes("Synchronized user")) {
+                setStep2Sub(prev => ({ ...prev, 1: 'SUCCESS' }));
+                setStep2Sub(prev => ({ ...prev, 2: 'RUNNING' }));
+                setStep2ValuePercent(65);
+              }
+            } else if (status === 'success') {
+              setStep2State('SUCCESS');
+              setStep2Sub({ 1: 'SUCCESS', 2: 'SUCCESS', 3: 'SUCCESS' });
+              setStep2ValuePercent(100);
+            } else if (status === 'failed') {
+              setStep2State('FAILED');
+            } else if (status === 'skipped') {
+              setStep2State('SKIPPED');
+            }
+          } else if (step === 'm365_license') {
+            if (status === 'running') {
+              setStep3State('RUNNING');
+              if (message.includes("delayed") || message.includes("Enqueuing")) {
+                setStep3Sub(prev => ({ ...prev, 1: 'RUNNING' }));
+                setStep3ValuePercent(35);
+              } else if (message.includes("Assigning")) {
+                setStep3Sub(prev => ({ ...prev, 1: 'SUCCESS' }));
+                setStep3Sub(prev => ({ ...prev, 2: 'RUNNING' }));
+                setStep3ValuePercent(70);
+              } else {
+                setStep3ValuePercent(50);
+              }
+            } else if (status === 'success') {
+              setStep3State('SUCCESS');
+              setStep3Sub({ 1: 'SUCCESS', 2: 'SUCCESS' });
+              setStep3ValuePercent(100);
+            } else if (status === 'failed') {
+              setStep3State('FAILED');
+            } else if (status === 'skipped') {
+              setStep3State('SKIPPED');
+            }
+          } else if (step === 'send_email') {
+            if (status === 'running') {
+              setStep4State('RUNNING');
+              setStep4Sub(prev => ({ ...prev, 1: 'RUNNING' }));
+              setStep4ValuePercent(50);
+            } else if (status === 'success') {
+              setStep4State('SUCCESS');
+              setStep4Sub({ 1: 'SUCCESS', 2: 'SUCCESS' });
+              setStep4ValuePercent(100);
+            } else if (status === 'failed') {
+              setStep4State('FAILED');
+            } else if (status === 'skipped') {
+              setStep4State('SKIPPED');
+            }
+          }
+        } catch (err) {
+          console.error("Error parsing step_update SSE event data:", err);
+        }
+      });
+
+      const handleJobEnd = (status: 'DONE' | 'FAILED') => {
+        setPipelineOverallState(status);
+        if (sse) sse.close();
+
+        if (status === 'DONE') {
+          const newUserObj: DirectoryUser = {
+            uid: usernameLogon,
+            name: displayName || `${firstName} ${lastName}`.trim(),
+            email: email,
+            title: jobTitle,
+            dept: department,
+            printCode: calculatedPin,
+            ou: selectedDN,
+            papercut: 'Synced (Auto)',
+            status: 'Active',
+            mobile: mobile,
+            company: company,
+            manager: managerInput,
+            office: office || company,
+            description: description
+          };
+          onAddUser(newUserObj);
+          addLog("SYSTEM", `ผูกบัญชี 3-Tier และเครื่องพิมพ์อัตโนมัติสำเร็จสำหรับ: ${newUserObj.name}`, "SUCCESS");
+        } else {
+          addLog("SYSTEM", `การดำเนินการ 3-Tier ล้มเหลว กรุณาตรวจสอบ log`, "ERROR");
+        }
+      };
+
+      sse.addEventListener("job_complete", () => {
+        setTerminalData(`// IT Provisioning 3-Tier process successfully finalized!`);
+        handleJobEnd('DONE');
+      });
+
+      sse.addEventListener("job_failed", (event) => {
+        const data = JSON.parse(event.data);
+        setTerminalData(`[JOB FAILED] Error: ${data.error || 'Unknown error'}`);
+        handleJobEnd('FAILED');
+      });
+
+      sse.addEventListener("job_cancelled", () => {
+        setTerminalData(`[JOB CANCELLED] Job execution cancelled.`);
+        handleJobEnd('FAILED');
+      });
+
+      sse.addEventListener("job_paused", () => {
+        setTerminalData(`[JOB PAUSED] Job execution paused.`);
+      });
+
+      sse.onerror = (err) => {
+        console.error("SSE stream connection error:", err);
+      };
+
+    } catch (e: any) {
       console.error(e);
+      setTerminalData(`[ERROR] Direct pipeline initialization failed: ${e.message}`);
+      setPipelineOverallState('FAILED');
     }
-
-    // Step 1: Active Directory build
-    setStep1Progress('RUNNING');
-    setTerminalData(`[LDAP] connecting to AD securely LDAPS server...`);
-    
-    // Sub 1-1
-    setStep1Sub(prev => ({ ...prev, 1: 'RUNNING' }));
-    setStep1ValuePercent(15);
-    await delayTime(900);
-    setStep1Sub(prev => ({ ...prev, 1: 'SUCCESS' }));
-    setTerminalData(`[LDAP SUCCESS] SECURE SSL HANDSHAKE OK.`);
-
-    // Sub 1-2
-    setStep1Sub(prev => ({ ...prev, 2: 'RUNNING' }));
-    setStep1ValuePercent(50);
-    await delayTime(900);
-    setStep1Sub(prev => ({ ...prev, 2: 'SUCCESS' }));
-    setTerminalData(`[LDAP SUCCESS] sAMAccountName verified and allocated: ${usernameLogon}`);
-
-    // Sub 1-3
-    setStep1Sub(prev => ({ ...prev, 3: 'RUNNING' }));
-    setStep1ValuePercent(85);
-    await delayTime(800);
-    setStep1Sub(prev => ({ ...prev, 3: 'SUCCESS' }));
-    setStep1ValuePercent(100);
-    setStep1Progress('SUCCESS');
-    setTerminalData(`[LDAP SUCCESS] Active Directory Account build completed inside: ${selectedDN}`);
-
-    // Step 2: Papercut control PIN
-    setStep2Progress('RUNNING');
-    setTerminalData(`[PAPERCUT] handshaking XML-RPC printer servers...`);
-    setStep2Sub(prev => ({ ...prev, 1: 'RUNNING' }));
-    setStep2ValuePercent(25);
-    await delayTime(1000);
-    setStep2Sub(prev => ({ ...prev, 1: 'SUCCESS' }));
-    setTerminalData(`[PAPERCUT] Synced LDAP user principal schema`);
-
-    setStep2Sub(prev => ({ ...prev, 2: 'RUNNING' }));
-    setStep2ValuePercent(65);
-    await delayTime(1000);
-    setStep2Sub(prev => ({ ...prev, 2: 'SUCCESS' }));
-    setTerminalData(`[PAPERCUT] XML-RPC write map OK`);
-
-    setStep2Sub(prev => ({ ...prev, 3: 'RUNNING' }));
-    setStep2ValuePercent(85);
-    await delayTime(800);
-    setStep2Sub(prev => ({ ...prev, 3: 'SUCCESS' }));
-    setStep2ValuePercent(100);
-    setStep2Progress('SUCCESS');
-    setTerminalData(`[PAPERCUT SUCCESS] Printer mapping successfully activated. PIN Control: ${calculatedPin}`);
-
-    // Step 3: Mail notification dispatcher
-    if (sendWelcomeEmailToggle) {
-      setStep3Progress('RUNNING');
-      setTerminalData(`[SMTP] Sending Welcome e-mail to delegate supervisor...`);
-      setStep3Sub(prev => ({ ...prev, 1: 'RUNNING' }));
-      setStep3ValuePercent(33);
-      await delayTime(900);
-      setStep3Sub(prev => ({ ...prev, 1: 'SUCCESS' }));
-      setTerminalData(`[SMTP] Parsed body and formatted templates`);
-
-      setStep3Sub(prev => ({ ...prev, 2: 'RUNNING' }));
-      setStep3ValuePercent(70);
-      await delayTime(900);
-      setStep3Sub(prev => ({ ...prev, 2: 'SUCCESS' }));
-      setStep3ValuePercent(100);
-      setStep3Progress('SUCCESS');
-      setTerminalData(`[SMTP SUCCESS] Mail delivered successfully to: ${emailTo}`);
-    } else {
-      setStep3Progress('SKIPPED');
-      setTerminalData(`[SMTP SKIPPED] Welcome notification email waived by admin configuration.`);
-      await delayTime(600);
-    }
-
-    // Step 4: Finished fully
-    setStep4ProgressFinal('SUCCESS');
-    setPipelineOverallState('DONE');
-    setTerminalData(`// IT Provisioning 3-Tier process successfully finalized!`);
-
-    // Complete locally in App Database
-    const newUserObj: DirectoryUser = {
-      uid: usernameLogon,
-      name: displayName || `${firstName} ${lastName}`.trim(),
-      email: email,
-      title: jobTitle,
-      dept: department,
-      printCode: calculatedPin,
-      ou: selectedDN,
-      papercut: 'Synced (Auto)',
-      status: 'Active',
-      mobile: mobile,
-      company: company,
-      manager: managerInput,
-      office: office || company,
-      description: description
-    };
-    onAddUser(newUserObj);
-    addLog("SYSTEM", `ผูกบัญชี 3-Tier และเครื่องพิมพ์อัตโนมัติสำเร็จสำหรับ: ${newUserObj.name}`, "SUCCESS");
   };
 
   const setTerminalData = (msg: string) => {
@@ -972,14 +1122,25 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     }
   };
 
-  const delayTime = (ms: number) => new Promise(res => setTimeout(resolveTime => res(true), ms));
+  // --- SORTED AND FILTERED LICENSES ---
+  const sortedAndFilteredLicenses = React.useMemo(() => {
+    let sorted = [...licenses].sort((a, b) => {
+      // Licenses > 0
+      if (a.availableUnits > 0 && b.availableUnits > 0) {
+        return a.availableUnits - b.availableUnits;
+      }
+      if (a.availableUnits > 0) return -1;
+      if (b.availableUnits > 0) return 1;
+      return 0; // Both <= 0
+    });
 
-  const filterLicensesList = licenses.filter((lic) => {
     const term = licenseSearch.toLowerCase();
-    return (
-      lic.skuPartNumber.toLowerCase().includes(term)
-    );
-  });
+    return sorted.filter((lic) => {
+      const displayName = LICENSE_NAME_MAP[lic.skuPartNumber] || lic.skuPartNumber;
+      return displayName.toLowerCase().includes(term) || lic.skuPartNumber.toLowerCase().includes(term);
+    });
+  }, [licenses, licenseSearch]);
+
 
   return (
     <div className="space-y-6">
@@ -988,18 +1149,16 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
         <div className="flex items-center justify-between w-full">
           {/* Step 1 */}
           <div className="flex flex-col items-center gap-1.5 flex-grow text-center">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-sm transition-all duration-300 ${
-              currentStep > 1 
-                ? 'bg-[#006e2c] border border-[#006e2c] text-white' 
-                : currentStep === 1 
-                  ? 'bg-primary border border-primary text-white ring-4 ring-primary/20 font-black' 
-                  : 'bg-white border-2 border-slate-300 text-slate-400'
-            }`}>
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-sm transition-all duration-300 ${currentStep > 1
+              ? 'bg-[#006e2c] border border-[#006e2c] text-white'
+              : currentStep === 1
+                ? 'bg-primary border border-primary text-white ring-4 ring-primary/20 font-black'
+                : 'bg-white border-2 border-slate-300 text-slate-400'
+              }`}>
               {currentStep > 1 ? <Check className="h-4.5 w-4.5 font-black" /> : <span className="font-bold text-sm">1</span>}
             </div>
-            <span className={`text-[11px] font-bold uppercase tracking-wider ${
-              currentStep > 1 ? 'text-[#006e2c]' : currentStep === 1 ? 'text-primary font-black' : 'text-slate-400'
-            }`}>
+            <span className={`text-[11px] font-bold uppercase tracking-wider ${currentStep > 1 ? 'text-[#006e2c]' : currentStep === 1 ? 'text-primary font-black' : 'text-slate-400'
+              }`}>
               Upload &amp; Extract
             </span>
           </div>
@@ -1008,18 +1167,16 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
 
           {/* Step 2 */}
           <div className="flex flex-col items-center gap-1.5 flex-grow text-center">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-sm transition-all duration-300 ${
-              currentStep > 2 
-                ? 'bg-[#006e2c] border border-[#006e2c] text-white' 
-                : currentStep === 2 
-                  ? 'bg-primary border border-primary text-white ring-4 ring-primary/20 font-black' 
-                  : 'bg-white border-2 border-slate-300 text-slate-400'
-            }`}>
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-sm transition-all duration-300 ${currentStep > 2
+              ? 'bg-[#006e2c] border border-[#006e2c] text-white'
+              : currentStep === 2
+                ? 'bg-primary border border-primary text-white ring-4 ring-primary/20 font-black'
+                : 'bg-white border-2 border-slate-300 text-slate-400'
+              }`}>
               {currentStep > 2 ? <Check className="h-4.5 w-4.5 font-black" /> : <span className="font-bold text-sm">2</span>}
             </div>
-            <span className={`text-[11px] font-bold uppercase tracking-wider ${
-              currentStep > 2 ? 'text-[#006e2c]' : currentStep === 2 ? 'text-primary font-black' : 'text-slate-400'
-            }`}>
+            <span className={`text-[11px] font-bold uppercase tracking-wider ${currentStep > 2 ? 'text-[#006e2c]' : currentStep === 2 ? 'text-primary font-black' : 'text-slate-400'
+              }`}>
               Verify &amp; Edit
             </span>
           </div>
@@ -1028,16 +1185,14 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
 
           {/* Step 3 */}
           <div className="flex flex-col items-center gap-1.5 flex-grow text-center">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${
-              currentStep === 3 
-                ? 'bg-primary border border-primary text-white shadow-lg ring-4 ring-primary/30 font-black animate-pulse' 
-                : 'bg-white border-2 border-slate-300 text-slate-400'
-            }`}>
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${currentStep === 3
+              ? 'bg-primary border border-primary text-white shadow-lg ring-4 ring-primary/30 font-black animate-pulse'
+              : 'bg-white border-2 border-slate-300 text-slate-400'
+              }`}>
               <span className="font-bold text-sm">3</span>
             </div>
-            <span className={`text-[11px] font-bold uppercase tracking-wider ${
-              currentStep === 3 ? 'text-primary font-black' : 'text-slate-400'
-            }`}>
+            <span className={`text-[11px] font-bold uppercase tracking-wider ${currentStep === 3 ? 'text-primary font-black' : 'text-slate-400'
+              }`}>
               Operation Sequence
             </span>
           </div>
@@ -1057,7 +1212,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
             <div className="space-y-1.5 pt-2">
               <label className="font-bold text-xs uppercase text-slate-500 block">วางไฟล์ลิงก์ URL เอกสารคำขอสิทธิ PDF</label>
               <div className="flex gap-2">
-                <input 
+                <input
                   type="text"
                   value={pdfUrl}
                   onChange={(e) => setPdfUrl(e.target.value)}
@@ -1077,7 +1232,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
             </div>
 
             {/* Simulated Drag & Drop card */}
-            <div 
+            <div
               onClick={() => loadPresetTemplate('somchai')}
               className="border-2 border-dashed border-outline-variant p-8 rounded-lg text-center bg-surface-container-lowest hover:border-primary hover:bg-slate-50/50 transition-all cursor-pointer select-none group"
             >
@@ -1088,7 +1243,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
 
             <div className="bg-surface-container-low p-4 rounded-lg">
               <label className="relative inline-flex items-center cursor-pointer select-none">
-                <input 
+                <input
                   type="checkbox"
                   checked={autoFillPrintCode}
                   onChange={(e) => setAutoFillPrintCode(e.target.checked)}
@@ -1105,13 +1260,12 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
             <div>
               <div className="flex justify-between items-center border-b pb-4 border-outline-variant mb-4 shrink-0">
                 <h3 className="font-bold text-primary text-base">สกัดพารามิเตอร์โครงสร้างผู้ใช้ (JSON Result)</h3>
-                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-wider ${
-                  parsingStatus === 'parsing' 
-                    ? 'bg-yellow-500 text-white animate-pulse' 
-                    : parsingStatus === 'success' 
-                      ? 'bg-secondary text-white' 
-                      : 'bg-surface-container-high text-outline'
-                }`}>
+                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-wider ${parsingStatus === 'parsing'
+                  ? 'bg-yellow-500 text-white animate-pulse'
+                  : parsingStatus === 'success'
+                    ? 'bg-secondary text-white'
+                    : 'bg-surface-container-high text-outline'
+                  }`}>
                   {parsingStatus === 'parsing' ? 'Parsing...' : parsingStatus === 'success' ? 'Extracted (200 OK)' : 'Standby'}
                 </span>
               </div>
@@ -1126,7 +1280,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                   <p className="text-xs text-on-surface-variant italic">
                     เปรียบเทียบข้อมูลจริงที่สกัดได้จาก PDF (Raw Content) ยานประมวล และการแมเปอร์ด่าน Attributes เข้า Active Directory (AD Mapper) ตามระเบียบเครือข่ายองค์กรอาปิโก
                   </p>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <div className="text-[10px] uppercase font-bold text-outline mb-1.5">1. ข้อมูลสกัดจาก PDF (Raw Output.json)</div>
@@ -1184,13 +1338,13 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
       {currentStep === 2 && (
         <div className="bg-white border border-outline-variant p-6 lg:p-8 rounded-lg relative shadow-sm space-y-6">
           <div className="absolute top-0 left-0 w-full h-1 bg-primary" />
-          
+
           <div className="flex justify-between items-center border-b pb-3 border-outline-variant shrink-0">
             <h3 className="text-subhead-sm font-bold text-primary flex items-center gap-1.5 mb-0">
               <FolderOpen className="h-5 w-5 text-primary shrink-0" /> ตรวจสอบและแก้ไขข้อมูลคำร้องขอสิทธิ (Verify &amp; Edit Fields)
             </h3>
             <span className="bg-secondary/15 text-secondary px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
-               PDF Extracted Layout
+              PDF Extracted Layout
             </span>
           </div>
 
@@ -1198,7 +1352,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Left Form Panel */}
               <div className="lg:col-span-7 space-y-6">
-                
+
                 {/* General Information card */}
                 <div className="bg-surface p-6 rounded-xl border border-outline-variant shadow-sm space-y-4 relative">
                   <h4 className="text-xs uppercase font-black text-primary tracking-wider border-b pb-2 border-outline-variant flex items-center gap-1.5">
@@ -1208,9 +1362,9 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className="font-bold text-xs uppercase text-slate-500 block">First Name (ชื่อภาษาอังกฤษ) *</label>
-                      <input 
-                        type="text" 
-                        required 
+                      <input
+                        type="text"
+                        required
                         value={firstName}
                         onChange={(e) => handleNameTyping(e.target.value, lastName)}
                         className="w-full p-2.5 border border-outline-variant bg-surface-bright rounded text-sm focus:ring-1 focus:ring-primary focus:border-primary font-semibold outline-none"
@@ -1218,9 +1372,9 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                     </div>
                     <div className="space-y-1.5">
                       <label className="font-bold text-xs uppercase text-slate-500 block">Last Name (นามสกุลภาษาอังกฤษ) *</label>
-                      <input 
-                        type="text" 
-                        required 
+                      <input
+                        type="text"
+                        required
                         value={lastName}
                         onChange={(e) => handleNameTyping(firstName, e.target.value)}
                         className="w-full p-2.5 border border-outline-variant bg-surface-bright rounded text-sm focus:ring-1 focus:ring-primary focus:border-primary font-semibold outline-none"
@@ -1231,14 +1385,14 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                   <div className="space-y-1.5">
                     <label className="font-bold text-xs uppercase text-slate-500 block">Display Name (ชื่อแสดงในระบบ)</label>
                     <div className="flex gap-2">
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={displayName}
                         onChange={(e) => setDisplayName(e.target.value)}
                         className="flex-grow p-2.5 border border-outline-variant bg-surface-bright rounded text-sm font-semibold outline-none focus:ring-1 focus:ring-primary focus:border-primary"
                       />
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => setDisplayName(`${firstName} ${lastName}`.trim())}
                         className="px-3 bg-primary text-on-primary font-black uppercase rounded text-[10px] tracking-widest hover:bg-primary-container cursor-pointer transition-colors shrink-0 h-10"
                       >
@@ -1251,15 +1405,15 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                     <div className="space-y-1.5">
                       <label className="font-bold text-xs uppercase text-slate-500 block">User Logon Name *</label>
                       <div className="flex gap-2">
-                        <input 
-                          type="text" 
-                          required 
+                        <input
+                          type="text"
+                          required
                           value={usernameLogon}
                           onChange={(e) => { setUsernameLogon(e.target.value); setLogonVerification('idle'); }}
                           className="flex-grow p-2.5 border border-outline-variant bg-surface-bright rounded text-sm font-mono focus:ring-1 focus:ring-primary outline-none focus:border-primary font-bold text-slate-800"
                         />
-                        <button 
-                          type="button" 
+                        <button
+                          type="button"
                           onClick={handleVerifyLogon}
                           disabled={logonVerification === 'verifying'}
                           className="px-3 bg-primary text-white font-bold rounded text-xs hover:brightness-105 transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer h-10 shrink-0 select-none"
@@ -1283,9 +1437,9 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                     <div className="space-y-1.5">
                       <label className="font-bold text-xs uppercase text-slate-500 block">Primary Account Password *</label>
                       <div className="relative">
-                        <input 
-                          type={showPassword ? 'text' : 'password'} 
-                          required 
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          required
                           value={userPassword}
                           onChange={(e) => setUserPassword(e.target.value)}
                           className="w-full p-2.5 border border-outline-variant bg-surface-bright rounded text-sm font-mono outline-none"
@@ -1304,9 +1458,9 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className="font-bold text-xs uppercase text-slate-500 block">E-mail Address *</label>
-                      <input 
-                        type="email" 
-                        required 
+                      <input
+                        type="email"
+                        required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="employee.name@aapico.com"
@@ -1315,8 +1469,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                     </div>
                     <div className="space-y-1.5">
                       <label className="font-bold text-xs uppercase text-slate-500 block">Office (ระดับสถานที่/โต๊ะ)</label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={office}
                         onChange={(e) => setOffice(e.target.value)}
                         className="w-full p-2.5 border border-outline-variant bg-surface-bright rounded text-sm outline-none"
@@ -1326,7 +1480,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
 
                   <div className="space-y-1.5">
                     <label className="font-bold text-xs uppercase text-slate-500 block">Task Description (เพื่อลงใน AD LDAP attributes)</label>
-                    <textarea 
+                    <textarea
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       className="w-full p-2.5 border border-outline-variant bg-surface-bright rounded text-xs outline-none min-h-[60px]"
@@ -1341,11 +1495,11 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                     การจัดเก็บ Organizational Unit (OU)
                   </h4>
                   <p className="text-[11px] text-outline font-medium">
-                     คลิกเลือกโฟลเดอร์ OU/Container บนโครงสร้างไดเรกทอรีด้านล่างเพื่อเป็นพาธปลายทางในการสร้าง Account Objectจริง
+                    คลิกเลือกโฟลเดอร์ OU/Container บนโครงสร้างไดเรกทอรีด้านล่างเพื่อเป็นพาธปลายทางในการสร้าง Account Objectจริง
                   </p>
-                  
+
                   {/* Embedded ADUC Tree */}
-                  <ADUCTree 
+                  <ADUCTree
                     selectedDN={selectedDN}
                     setSelectedDN={setSelectedDN}
                     onPathChange={(dn, name) => {
@@ -1366,6 +1520,64 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                   </div>
                 </div>
 
+                {/* Country and address info */}
+                <div className="bg-surface p-6 rounded-xl border border-outline-variant shadow-sm space-y-4">
+                  <h4 className="text-xs uppercase font-black text-primary tracking-wider border-b pb-2 border-outline-variant">
+                    Address Details (ที่อยู่ติดต่อพนักงาน)
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-slate-500">Street Address</label>
+                      <input
+                        type="text"
+                        value={street}
+                        onChange={(e) => setStreet(e.target.value)}
+                        className="w-full text-xs p-2.5 border border-outline-variant bg-surface-bright rounded outline-none"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] uppercase font-bold text-slate-500">City / District</label>
+                        <input
+                          type="text"
+                          value={city}
+                          onChange={(e) => setCity(e.target.value)}
+                          className="w-full text-xs p-2.5 border border-outline-variant bg-surface-bright rounded outline-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] uppercase font-bold text-slate-500">State / Province</label>
+                        <input
+                          type="text"
+                          value={stateName}
+                          onChange={(e) => setStateName(e.target.value)}
+                          className="w-full text-xs p-2.5 border border-outline-variant bg-surface-bright rounded outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] uppercase font-bold text-slate-500">Postal Code</label>
+                        <input
+                          type="text"
+                          value={zipCode}
+                          onChange={(e) => setZipCode(e.target.value)}
+                          className="w-full text-xs p-2.5 border border-outline-variant bg-surface-bright rounded outline-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] uppercase font-bold text-slate-500">Country</label>
+                        <input
+                          type="text"
+                          value={country}
+                          onChange={(e) => setCountry(e.target.value)}
+                          className="w-full text-xs p-2.5 border border-outline-variant bg-surface-bright rounded outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* M365 Licenses assignments */}
                 <div className="bg-primary/5 p-6 rounded-xl border-2 border-primary/20 shadow-md space-y-4">
                   <div className="flex justify-between items-center border-b pb-2 border-outline-variant shrink-0">
@@ -1379,7 +1591,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
 
                   <div className="flex gap-2">
                     <div className="relative flex-grow">
-                      <input 
+                      <input
                         type="text"
                         value={licenseSearch}
                         onChange={(e) => setLicenseSearch(e.target.value)}
@@ -1389,8 +1601,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                       <Search className="h-4 w-4 text-outline absolute left-2.5 top-1/2 -translate-y-1/2" />
                     </div>
                     {licenseSearch && (
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => setLicenseSearch('')}
                         className="text-xs font-bold text-outline hover:text-slate-800"
                       >
@@ -1400,100 +1612,49 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                   </div>
 
                   {/* Licenses stocking grids */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-56 overflow-y-auto custom-scrollbar pr-1.5">
-                    {filterLicensesList.map((lic) => {
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-56 overflow-y-auto custom-scrollbar pr-1.5 relative">
+                    {isLoadingLicenses && (
+                      <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-10">
+                        <Loader2 className="h-6 w-6 text-primary animate-spin" />
+                      </div>
+                    )}
+                    {isFetchingLicenses && !isLoadingLicenses && (
+                      <div className="absolute top-2 right-2 flex items-center gap-1 text-[10px] text-primary bg-white px-2 py-1 rounded shadow-sm border border-primary/20 z-10">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Syncing
+                      </div>
+                    )}
+                    {sortedAndFilteredLicenses.map((lic) => {
                       const isSelected = selectedSkuIds.includes(lic.skuPartNumber);
                       const isOut = lic.availableUnits <= 0;
+                      const displayName = LICENSE_NAME_MAP[lic.skuPartNumber] || lic.skuPartNumber;
 
                       return (
-                        <div 
+                        <div
                           key={lic.skuPartNumber}
                           onClick={() => handleToggleLicense(lic)}
-                          className={`p-3 rounded-lg border flex items-center justify-between transition-all select-none duration-150 ${
-                            isOut 
-                              ? 'bg-slate-100/70 border-slate-200 opacity-50 cursor-not-allowed' 
-                              : isSelected
-                                ? 'bg-primary/10 border-primary text-primary cursor-pointer'
-                                : 'bg-white border-outline-variant cursor-pointer hover:border-slate-400'
-                          }`}
+                          className={`p-3 rounded-lg border flex items-center justify-between transition-all select-none duration-200 ease-out active:scale-[0.98] ${isOut
+                            ? 'bg-slate-100/70 border-slate-200 opacity-50 cursor-not-allowed'
+                            : isSelected
+                              ? 'bg-primary/10 border-primary text-primary cursor-pointer'
+                              : 'bg-white border-outline-variant cursor-pointer hover:border-slate-400'
+                            }`}
                         >
                           <div className="min-w-0 pr-2">
-                            <p className="text-xs font-bold truncate" title={licenseMapping[lic.skuPartNumber] || lic.skuPartNumber}>
-                              {licenseMapping[lic.skuPartNumber] || lic.skuPartNumber}
-                            </p>
-                            <p className="text-[10px] text-outline truncate">{lic.skuPartNumber}</p>
+                            <p className="text-xs font-bold truncate" title={displayName}>{displayName}</p>
                             <p className={`text-[9px] font-semibold ${isOut ? 'text-error' : 'text-secondary'} mt-0.5`}>
-                              {lic.availableUnits} Available
+                              {isOut ? 'Out of Stock' : `${lic.availableUnits} Available`}
                             </p>
                           </div>
-                          <input 
+                          <input
                             type="checkbox"
                             checked={isSelected}
                             disabled={isOut}
-                            onChange={() => {}} // Click handled by parent wrapper click
+                            onChange={() => { }} // Click handled by parent wrapper click
                             className="rounded text-primary focus:ring-primary h-4.5 w-4.5 shrink-0"
                           />
                         </div>
                       );
                     })}
-                  </div>
-                </div>
-
-                {/* Country and address info */}
-                <div className="bg-surface p-6 rounded-xl border border-outline-variant shadow-sm space-y-4">
-                  <h4 className="text-xs uppercase font-black text-primary tracking-wider border-b pb-2 border-outline-variant">
-                    Address Details (ที่อยู่ติดต่อพนักงาน)
-                  </h4>
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-slate-500">Street Address</label>
-                      <input 
-                        type="text"
-                        value={street}
-                        onChange={(e) => setStreet(e.target.value)}
-                        className="w-full text-xs p-2.5 border border-outline-variant bg-surface-bright rounded outline-none"
-                      />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-500">City / District</label>
-                        <input 
-                          type="text"
-                          value={city}
-                          onChange={(e) => setCity(e.target.value)}
-                          className="w-full text-xs p-2.5 border border-outline-variant bg-surface-bright rounded outline-none"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-500">State / Province</label>
-                        <input 
-                          type="text"
-                          value={stateName}
-                          onChange={(e) => setStateName(e.target.value)}
-                          className="w-full text-xs p-2.5 border border-outline-variant bg-surface-bright rounded outline-none"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-500">Postal Code</label>
-                        <input 
-                          type="text"
-                          value={zipCode}
-                          onChange={(e) => setZipCode(e.target.value)}
-                          className="w-full text-xs p-2.5 border border-outline-variant bg-surface-bright rounded outline-none"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-500">Country</label>
-                        <input 
-                          type="text"
-                          value={country}
-                          onChange={(e) => setCountry(e.target.value)}
-                          className="w-full text-xs p-2.5 border border-outline-variant bg-surface-bright rounded outline-none"
-                        />
-                      </div>
-                    </div>
                   </div>
                 </div>
 
@@ -1511,8 +1672,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                   <div className="space-y-3.5">
                     <div className="space-y-1.5">
                       <label className="font-bold text-xs uppercase text-slate-500 block">Company (บริษัท)</label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={company}
                         onChange={(e) => setCompany(e.target.value)}
                         placeholder="เช่น AAPICO Hitech PLC"
@@ -1521,8 +1682,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                     </div>
                     <div className="space-y-1.5">
                       <label className="font-bold text-xs uppercase text-slate-500 block">Department (ส่วนงาน/แผนก)</label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={department}
                         onChange={(e) => setDepartment(e.target.value)}
                         placeholder="เช่น System Engineering"
@@ -1531,8 +1692,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                     </div>
                     <div className="space-y-1.5">
                       <label className="font-bold text-xs uppercase text-slate-500 block">Job Title (ตำแหน่งงาน)</label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={jobTitle}
                         onChange={(e) => setJobTitle(e.target.value)}
                         placeholder="เช่น Software Architect"
@@ -1543,15 +1704,15 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                     <div className="space-y-1.5">
                       <label className="font-bold text-xs uppercase text-slate-500 block">Supervisor Manager / ผู้จัดการ *</label>
                       <div className="flex gap-2">
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           required
                           value={managerInput}
                           onChange={(e) => { setManagerInput(e.target.value); setManagerVerification('idle'); }}
                           className="flex-grow p-2.5 border border-outline-variant bg-surface-bright rounded text-sm font-semibold outline-none focus:ring-1 focus:ring-primary focus:border-primary"
                         />
-                        <button 
-                          type="button" 
+                        <button
+                          type="button"
                           onClick={handleVerifyManager}
                           disabled={managerVerification === 'verifying'}
                           className="px-3 bg-primary text-white font-bold rounded text-xs hover:brightness-105 transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer h-10 shrink-0 select-none"
@@ -1571,6 +1732,18 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                         <p className="text-[10px] text-error font-bold">✗ ไม่พบข้อมูลผู้จัดการรายนี้ในระบบ AD (กรุณากลั่นกรองชื่อใหม่)</p>
                       )}
                     </div>
+
+                    <div className="space-y-1.5">
+                      <label className="font-bold text-xs uppercase text-slate-500 block">Supervisor Manager Email (อีเมลผู้จัดการ) *</label>
+                      <input
+                        type="email"
+                        required
+                        value={emailTo}
+                        onChange={(e) => setEmailTo(e.target.value)}
+                        placeholder="เช่น somchai.m@aapico.com"
+                        className="w-full p-2.5 border border-outline-variant bg-surface-bright rounded text-sm outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1588,7 +1761,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                       onClick={() => setIsBulkGroupsOpen(true)}
                       className="flex-1 py-2 px-3 border border-outline-variant text-[11px] font-bold rounded bg-white hover:bg-slate-50 hover:border-slate-400 select-none cursor-pointer duration-100 shrink-0 text-center"
                     >
-                       Bulk verify
+                      Bulk verify
                     </button>
                     <button
                       type="button"
@@ -1636,10 +1809,10 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                 <div className="bg-surface p-6 rounded-xl border border-outline-variant shadow-sm space-y-4">
                   <div className="flex justify-between items-center border-b pb-2 border-outline-variant">
                     <h4 className="text-xs uppercase font-black text-primary tracking-wider mb-0 text-center">
-                       Account Parameters
+                      Account Parameters
                     </h4>
                     <label className="relative inline-flex items-center cursor-pointer select-none">
-                      <input 
+                      <input
                         type="checkbox"
                         checked={accountEnabled}
                         onChange={(e) => setAccountEnabled(e.target.checked)}
@@ -1653,7 +1826,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                   <div className="space-y-3.5">
                     <div className="space-y-1">
                       <label className="text-[10px] uppercase font-bold text-slate-500">Mobile Phone *</label>
-                      <input 
+                      <input
                         type="tel"
                         required
                         value={mobile}
@@ -1665,7 +1838,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
 
                     <div className="space-y-1">
                       <label className="text-[10px] uppercase font-bold text-slate-500">Papercut Print Code (6 หลัก)</label>
-                      <input 
+                      <input
                         type="text"
                         maxLength={6}
                         required
@@ -1679,7 +1852,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
 
                     <div className="space-y-1">
                       <label className="text-[10px] uppercase font-bold text-slate-500">Roaming Profile Path</label>
-                      <input 
+                      <input
                         type="text"
                         value={profilePath}
                         onChange={(e) => setProfilePath(e.target.value)}
@@ -1690,7 +1863,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
 
                     <div className="space-y-1">
                       <label className="text-[10px] uppercase font-bold text-slate-500">Logon Script Name</label>
-                      <input 
+                      <input
                         type="text"
                         value={logonScript}
                         onChange={(e) => setLogonScript(e.target.value)}
@@ -1702,34 +1875,10 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                     <div className="space-y-2 pt-2 border-t border-outline-variant">
                       <div className="flex items-center justify-between p-2.5 border border-outline-variant bg-white rounded-lg">
                         <span className="text-[11px] font-bold text-slate-800">เปลี่ยนรหัสผ่านในการล็อกอินครั้งแรก</span>
-                        <input 
+                        <input
                           type="checkbox"
                           checked={pwdResetOnFirstLogon}
                           onChange={(e) => setPwdResetOnFirstLogon(e.target.checked)}
-                          className="rounded text-primary focus:ring-primary h-4 w-4 shrink-0"
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between p-2.5 border border-outline-variant bg-white rounded-lg">
-                        <div className="flex flex-col">
-                          <span className="text-[11px] font-bold text-slate-800">เปิดใช้งานการซิงค์ Papercut (PIN)</span>
-                        </div>
-                        <input 
-                          type="checkbox"
-                          checked={enablePapercutSync}
-                          onChange={(e) => setEnablePapercutSync(e.target.checked)}
-                          className="rounded text-primary focus:ring-primary h-4 w-4 shrink-0"
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between p-2.5 border border-outline-variant bg-white rounded-lg">
-                        <div className="flex flex-col">
-                          <span className="text-[11px] font-bold text-slate-800">เปิดใช้งานไลเซนส์ Microsoft 365</span>
-                        </div>
-                        <input 
-                          type="checkbox"
-                          checked={enableM365License}
-                          onChange={(e) => setEnableM365License(e.target.checked)}
                           className="rounded text-primary focus:ring-primary h-4 w-4 shrink-0"
                         />
                       </div>
@@ -1739,7 +1888,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                           <span className="text-[11px] font-black text-primary uppercase">ส่ง Welcome Email แจ้งรหัสผ่าน</span>
                           <span className="text-[9px] text-outline font-semibold">ส่งแจ้งหัวหน้างานและ Support</span>
                         </div>
-                        <input 
+                        <input
                           type="checkbox"
                           checked={sendWelcomeEmailToggle}
                           onChange={(e) => setSendWelcomeEmailToggle(e.target.checked)}
@@ -1764,7 +1913,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                     </p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer select-none">
-                    <input 
+                    <input
                       type="checkbox"
                       checked={sendWelcomeEmailToggle}
                       onChange={(e) => setSendWelcomeEmailToggle(e.target.checked)}
@@ -1780,8 +1929,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                       <div className="p-3 bg-white space-y-1.5 border-b border-[#edebe9]">
                         <div className="flex items-center border-b border-[#edebe9] pb-0.5">
                           <span className="w-16 text-xs text-slate-500 font-semibold px-2">To</span>
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             value={emailTo}
                             onChange={(e) => setEmailTo(e.target.value)}
                             className="flex-grow border-none focus:ring-0 text-xs py-1 px-1 font-semibold text-slate-800 focus:outline-none"
@@ -1789,8 +1938,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                         </div>
                         <div className="flex items-center border-b border-[#edebe9] pb-0.5">
                           <span className="w-16 text-xs text-slate-500 font-semibold px-2">Cc</span>
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             value={emailCc}
                             onChange={(e) => setEmailCc(e.target.value)}
                             className="flex-grow border-none focus:ring-0 text-xs py-1 px-1 font-semibold text-slate-800 focus:outline-none"
@@ -1798,8 +1947,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                         </div>
                         <div className="flex items-center">
                           <span className="w-16 text-xs text-slate-500 font-semibold px-2">Subject</span>
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             value={emailSubject}
                             onChange={(e) => setEmailSubject(e.target.value)}
                             className="flex-grow border-none focus:ring-0 text-xs py-1 px-1 font-black text-slate-800 focus:outline-none"
@@ -1810,7 +1959,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                       {/* Paper-pad layout body container text editor */}
                       <div className="p-4 bg-[#f3f2f1] shrink min-h-[300px]">
                         <div className="max-w-2xl mx-auto border border-[#edebe9] p-6 shadow-sm bg-white min-h-[290px] flex flex-col">
-                          <textarea 
+                          <textarea
                             value={emailBody}
                             onChange={(e) => setEmailBody(e.target.value)}
                             className="w-full flex-grow border-none focus:ring-0 text-xs text-slate-800 leading-relaxed font-body h-64 focus:outline-none outline-none overflow-y-auto custom-scrollbar"
@@ -1829,30 +1978,128 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
 
             {/* Form actions footer bar */}
             <div className="pt-6 border-t border-outline-variant flex items-center justify-between shrink-0">
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setCurrentStep(1)}
                 className="px-5 py-3 border border-outline text-outline font-black rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-1.5 duration-100 cursor-pointer text-xs"
               >
                 <ArrowLeft className="h-4.5 w-4.5" /> BACK TO PARSER
               </button>
               <div className="flex gap-3">
-                <button 
+                <button
                   type="button"
                   onClick={loadIntoStep2Manual}
                   className="px-5 py-3 border border-primary text-primary font-black rounded-lg hover:bg-primary/5 transition-colors cursor-pointer text-xs"
                 >
                   RESET FORM
                 </button>
-                <button 
-                  type="submit"
-                  className="px-6 py-3 bg-primary text-on-primary font-black rounded-lg hover:brightness-105 shadow-md flex items-center gap-1.5 transition-all active:scale-98 cursor-pointer text-xs"
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep(2.5)}
+                  className="px-6 py-3 bg-secondary text-white font-black rounded-lg hover:brightness-105 shadow-md flex items-center gap-1.5 transition-all active:scale-98 cursor-pointer text-xs"
                 >
-                  <Play className="h-4 w-4 fill-white" /> NEXT: AD CONFIGURATION
+                  DEBUG PAYLOAD PREVIEW
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setCurrentStep(3); handleSequenceStart(); }}
+                  className="px-6 py-3 bg-slate-700 text-white font-black rounded-lg hover:brightness-105 shadow-md flex items-center gap-1.5 transition-all active:scale-98 cursor-pointer text-xs"
+                >
+                  SKIP TO OPERATION
                 </button>
               </div>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* STEP 2.5: DEBUG PREVIEW */}
+      {currentStep === 2.5 && (
+        <div className="bg-white border border-outline-variant rounded-xl shadow-sm flex flex-col h-[700px]">
+          {/* Header */}
+          <div className="px-6 py-4 border-b border-outline-variant flex justify-between items-center">
+            <div>
+              <h3 className="font-bold text-slate-800 text-lg">Review Provisioning Payload</h3>
+              <p className="text-xs text-slate-500">Stage 2.5: Ensure all mapped values and operational triggers are correctly configured before final deployment.</p>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex border-b border-outline-variant px-6">
+            <button className={`px-4 py-3 text-xs font-bold uppercase transition-all ${debugTab === 'visual' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`} onClick={() => setDebugTab('visual')}>Visual Inspector</button>
+            <button className={`px-4 py-3 text-xs font-bold uppercase transition-all ${debugTab === 'schema' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`} onClick={() => setDebugTab('schema')}>Technical Schema</button>
+            <button className={`px-4 py-3 text-xs font-bold uppercase transition-all ${debugTab === 'json' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`} onClick={() => setDebugTab('json')}>Raw JSON</button>
+          </div>
+
+          {/* Content Area */}
+          <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+            {debugTab === 'visual' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">Identity & Metadata <span className="text-[10px] bg-green-100 text-green-800 px-2 py-0.5 rounded">VERIFIED</span></h4>
+                  <div className="grid grid-cols-2 gap-4 text-xs">
+                    <div><p className="text-slate-500 uppercase">Full Name</p><p className="font-bold">{displayName}</p></div>
+                    <div><p className="text-slate-500 uppercase">Employee ID</p><p className="font-bold">{description}</p></div>
+                    <div><p className="text-slate-500 uppercase">Company</p><p className="font-bold">{company}</p></div>
+                    <div><p className="text-slate-500 uppercase">Document No.</p><p className="font-bold">PRV-{Date.now().toString().slice(-6)}</p></div>
+                  </div>
+                </div>
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">Workflow Logic</h4>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between"><span>AD Object Creation</span><span className="font-bold">Enabled</span></div>
+                    <div className="flex justify-between"><span>Papercut Sync</span><span className="font-bold">Enabled</span></div>
+                    <div className="flex justify-between"><span>M365 Licensing</span><span className="font-bold">Enabled</span></div>
+                    <div className="flex justify-between text-slate-400"><span>Email Dispatching</span><span className="font-bold">{sendWelcomeEmailToggle ? 'Enabled' : 'Bypassed'}</span></div>
+                  </div>
+                </div>
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <h4 className="font-bold text-slate-800 mb-4">Directory Placement</h4>
+                  <p className="text-slate-500 text-[10px] uppercase">Target OU</p>
+                  <p className="text-xs font-mono bg-slate-100 p-2 rounded mb-2">{selectedDN}</p>
+                  <p className="text-slate-500 text-[10px] uppercase">Groups</p>
+                  <div className="flex flex-wrap gap-1 mt-1 text-[10px]">
+                    {adGroupsAssigned.map(g => <span key={g.name} className="bg-blue-50 text-blue-700 px-2 py-1 rounded">{g.name}</span>)}
+                  </div>
+                </div>
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <h4 className="font-bold text-slate-800 mb-4">Asset Allocation</h4>
+                  <p className="text-slate-500 text-[10px] uppercase">M365 SKUs</p>
+                  <ul className="text-xs mb-4">
+                    {selectedSkuIds.map(sku => <li key={sku}>{LICENSE_NAME_MAP[sku] || sku}</li>)}
+                  </ul>
+                  <p className="text-slate-500 text-[10px] uppercase">Print Code</p>
+                  <p className="text-2xl font-bold text-primary tracking-widest">{printCode}</p>
+                </div>
+              </div>
+            )}
+            {debugTab !== 'visual' && (
+              <pre className="bg-slate-900 text-slate-100 p-6 rounded-lg text-xs overflow-auto h-full font-mono leading-relaxed">
+                {JSON.stringify(buildProvisionPayload(), null, 4)}
+              </pre>
+            )}
+          </div>
+
+          {/* Action Bar */}
+          <div className="px-6 py-4 border-t border-outline-variant flex justify-between items-center bg-white">
+            <div className="flex items-center gap-2 text-green-700 text-xs font-bold">
+              <CheckCircle className="h-4 w-4" /> Payload Integrity Verified
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setCurrentStep(2)}
+                className="px-4 py-2 bg-slate-100 text-slate-700 text-xs uppercase font-bold rounded hover:bg-slate-200 transition-all cursor-pointer"
+              >
+                Back to Editor
+              </button>
+              <button
+                onClick={() => { setCurrentStep(3); handleSequenceStart(); }}
+                className="px-4 py-2 bg-primary text-white text-xs uppercase font-bold rounded hover:brightness-105 transition-all cursor-pointer shadow"
+              >
+                Proceed to Deploy
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1869,19 +2116,18 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                 ระบบบิวท์เวิร์กโหลดคิวอัตโนมัติ สั่งผูกข้อมูลเครื่องพิมพ์ อีเมล และ License จาก Active Directory
               </p>
             </div>
-            <span className={`px-3 py-1 text-white text-[10px] font-black uppercase tracking-widest rounded shadow-sm ${
-              pipelineState === 'PROCESSING' 
-                ? 'bg-[#1a73e8] animate-pulse' 
-                : pipelineState === 'DONE' 
-                  ? 'bg-secondary' 
-                  : 'bg-error'
-            }`}>
+            <span className={`px-3 py-1 text-white text-[10px] font-black uppercase tracking-widest rounded shadow-sm ${pipelineState === 'PROCESSING'
+              ? 'bg-[#1a73e8] animate-pulse'
+              : pipelineState === 'DONE'
+                ? 'bg-secondary'
+                : 'bg-error'
+              }`}>
               {pipelineState === 'PROCESSING' ? 'RUNNING' : pipelineState}
             </span>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-4">
-            
+
             {/* Left Steps tracker panels - Active Provisioning Pipeline */}
             <div className="lg:col-span-7 flex flex-col gap-4">
               <h4 className="font-bold text-sm text-primary flex items-center gap-1.5">
@@ -1894,28 +2140,10 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                 <div className="absolute left-[30px] top-8 bottom-8 w-[2px] bg-slate-200 z-0"></div>
 
                 {/* Stage 1: Creating Active Directory Account */}
-                <div className={`flex gap-4 p-4 rounded-xl border relative z-10 transition-all duration-300 ${
-                  step1State === 'RUNNING' 
-                    ? 'border-primary bg-primary/5 shadow-md ring-1 ring-primary/20' 
-                    : step1State === 'SUCCESS'
-                      ? 'border-secondary bg-white shadow-sm'
-                      : 'border-slate-200 opacity-60 bg-slate-50'
-                }`}>
+                <div className={`flex gap-4 p-4 rounded-xl border relative z-10 transition-all duration-300 ${getStageStyle(step1State).card}`}>
                   <div className="shrink-0">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-300 ${
-                      step1State === 'RUNNING' 
-                        ? 'bg-primary-container/10 border-primary text-primary animate-pulse shadow-sm'
-                        : step1State === 'SUCCESS' 
-                          ? 'bg-secondary/10 border-secondary text-secondary' 
-                          : 'bg-slate-100 border-slate-300 text-slate-400'
-                    }`}>
-                      {step1State === 'RUNNING' ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : step1State === 'SUCCESS' ? (
-                        <UserCheck className="h-5 w-5 font-bold" />
-                      ) : (
-                        <UserCheck className="h-5 w-5" />
-                      )}
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-300 ${getStageStyle(step1State).icon}`}>
+                      {step1State === 'RUNNING' ? <Loader2 className="h-5 w-5 animate-spin" /> : <UserCheck className={`h-5 w-5 ${step1State === 'SUCCESS' ? 'font-bold' : ''}`} />}
                     </div>
                   </div>
                   <div className="flex-grow">
@@ -1924,14 +2152,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                         <h4 className="font-bold text-xs text-on-surface">Creating Active Directory Account</h4>
                         <p className="text-[11px] text-on-surface-variant font-body">Primary Domain Controller: DC-HQ-01</p>
                       </div>
-                      <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 tracking-wider ${
-                        step1State === 'RUNNING' 
-                          ? 'bg-primary text-white animate-pulse'
-                          : step1State === 'SUCCESS'
-                            ? 'bg-secondary/15 text-secondary'
-                            : 'bg-slate-200 text-slate-500'
-                      }`}>
-                        {step1State === 'RUNNING' ? 'RUNNING' : step1State === 'SUCCESS' ? 'COMPLETED' : 'STANDBY'}
+                      <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 tracking-wider ${getStageStyle(step1State).badge}`}>
+                        {getStageStyle(step1State).badgeLabel}
                       </span>
                     </div>
 
@@ -1961,21 +2183,9 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                 </div>
 
                 {/* Stage 2: Syncing Papercut & Print Code */}
-                <div className={`flex gap-4 p-4 rounded-xl border relative z-10 transition-all duration-300 ${
-                  step2State === 'RUNNING' 
-                    ? 'border-primary bg-primary/5 shadow-md ring-1 ring-primary/20' 
-                    : step2State === 'SUCCESS'
-                      ? 'border-secondary bg-white shadow-sm'
-                      : 'border-slate-200 opacity-60 bg-slate-50'
-                }`}>
+                <div className={`flex gap-4 p-4 rounded-xl border relative z-10 transition-all duration-300 ${getStageStyle(step2State).card}`}>
                   <div className="shrink-0">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-300 ${
-                      step2State === 'RUNNING' 
-                        ? 'bg-primary-container/10 border-primary text-primary animate-pulse shadow-sm'
-                        : step2State === 'SUCCESS' 
-                          ? 'bg-secondary/10 border-secondary text-secondary' 
-                          : 'bg-slate-100 border-slate-300 text-slate-400'
-                    }`}>
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-300 ${getStageStyle(step2State).icon}`}>
                       {step2State === 'RUNNING' ? (
                         <Loader2 className="h-5 w-5 animate-spin" />
                       ) : step2State === 'SUCCESS' ? (
@@ -1993,14 +2203,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                           {step2State === 'RUNNING' ? 'Communicating with printer server...' : `Printer PIN activated matching employee profile`}
                         </p>
                       </div>
-                      <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 tracking-wider ${
-                        step2State === 'RUNNING' 
-                          ? 'bg-primary text-white animate-pulse'
-                          : step2State === 'SUCCESS'
-                            ? 'bg-secondary/15 text-secondary'
-                            : 'bg-slate-200 text-slate-500'
-                      }`}>
-                        {step2State === 'RUNNING' ? 'RUNNING' : step2State === 'SUCCESS' ? 'COMPLETED' : 'STANDBY'}
+                      <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 tracking-wider ${getStageStyle(step2State).badge}`}>
+                        {getStageStyle(step2State).badgeLabel}
                       </span>
                     </div>
 
@@ -2030,25 +2234,15 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                 </div>
 
                 {/* Stage 3: Assigning Microsoft 365 License */}
-                <div className={`flex gap-4 p-4 rounded-xl border relative z-10 transition-all duration-300 ${
-                  step1State === 'RUNNING' 
-                    ? 'border-primary bg-primary/5 shadow-md ring-1 ring-primary/20' 
-                    : step1State === 'SUCCESS'
-                      ? 'border-secondary bg-white shadow-sm'
-                      : 'border-slate-200 opacity-60 bg-slate-50'
-                }`}>
+                <div className={`flex gap-4 p-4 rounded-xl border relative z-10 transition-all duration-300 ${getStageStyle(step3State).card}`}>
                   <div className="shrink-0">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-300 ${
-                      step1State === 'RUNNING' 
-                        ? 'bg-primary-container/10 border-primary text-primary animate-pulse shadow-sm'
-                        : step1State === 'SUCCESS' 
-                          ? 'bg-secondary/10 border-secondary text-secondary' 
-                          : 'bg-slate-100 border-slate-300 text-slate-400'
-                    }`}>
-                      {step1State === 'RUNNING' ? (
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-300 ${getStageStyle(step3State).icon}`}>
+                      {step3State === 'RUNNING' ? (
                         <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : step1State === 'SUCCESS' ? (
+                      ) : step3State === 'SUCCESS' ? (
                         <Check className="h-5 w-5 font-bold text-secondary" />
+                      ) : step3State === 'SKIPPED' ? (
+                        <Check className="h-5 w-5 font-bold text-slate-500" />
                       ) : (
                         <Lock className="h-5 w-5" />
                       )}
@@ -2060,62 +2254,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                         <h4 className="font-bold text-xs text-on-surface">Assigning Microsoft 365 License</h4>
                         <p className="text-[11px] text-on-surface-variant font-body">SKU License Allocation: {selectedSkuIds.length > 0 ? selectedSkuIds.join(", ") : "E3 Premium (Auto-Assigned)"}</p>
                       </div>
-                      <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 tracking-wider ${
-                        step1State === 'RUNNING' 
-                          ? 'bg-primary text-white animate-pulse'
-                          : step1State === 'SUCCESS'
-                            ? 'bg-secondary/15 text-secondary'
-                            : 'bg-slate-200 text-slate-500'
-                      }`}>
-                        {step1State === 'RUNNING' ? 'RUNNING' : step1State === 'SUCCESS' ? 'COMPLETED' : 'STANDBY'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Stage 4: Sending Welcome Notification */}
-                <div className={`flex gap-4 p-4 rounded-xl border relative z-10 transition-all duration-300 ${
-                  step3State === 'RUNNING' 
-                    ? 'border-primary bg-primary/5 shadow-md ring-1 ring-primary/20' 
-                    : step3State === 'SUCCESS'
-                      ? 'border-secondary bg-white shadow-sm'
-                      : step3State === 'SKIPPED'
-                        ? 'border-slate-300 opacity-60 bg-slate-50 shadow-none'
-                        : 'border-slate-200 opacity-60 bg-slate-50'
-                }`}>
-                  <div className="shrink-0">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-300 ${
-                      step3State === 'RUNNING' 
-                        ? 'bg-primary-container/10 border-primary text-primary animate-pulse shadow-sm'
-                        : step3State === 'SUCCESS' 
-                          ? 'bg-secondary/10 border-secondary text-secondary' 
-                          : 'bg-slate-100 border-slate-300 text-slate-400'
-                    }`}>
-                      {step3State === 'RUNNING' ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : step3State === 'SUCCESS' ? (
-                        <Mail className="h-5 w-5 font-bold" />
-                      ) : (
-                        <Mail className="h-5 w-5" />
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex-grow">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-bold text-xs text-on-surface">Sending Welcome Notification</h4>
-                        <p className="text-[11px] text-on-surface-variant font-body">Template: Global_Onboarding_V2 ({emailTo || 'No Target'})</p>
-                      </div>
-                      <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 tracking-wider ${
-                        step3State === 'RUNNING' 
-                          ? 'bg-primary text-white animate-pulse'
-                          : step3State === 'SUCCESS'
-                            ? 'bg-secondary/15 text-secondary'
-                            : step3State === 'SKIPPED'
-                              ? 'bg-slate-300 text-slate-700'
-                              : 'bg-slate-200 text-slate-500'
-                      }`}>
-                        {step3State === 'RUNNING' ? 'RUNNING' : step3State === 'SUCCESS' ? 'COMPLETED' : step3State === 'SKIPPED' ? 'SKIPPED' : 'STANDBY'}
+                      <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 tracking-wider ${getStageStyle(step3State).badge}`}>
+                        {getStageStyle(step3State).badgeLabel}
                       </span>
                     </div>
 
@@ -2129,10 +2269,55 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                       <div className="mt-3 space-y-1.5 pl-3 border-l-2 border-primary/20 font-body">
                         <div className="flex items-center gap-2 text-[11px] text-slate-700">
                           <span className={`h-1.5 w-1.5 rounded-full ${step3Sub[1] === 'SUCCESS' ? 'bg-secondary' : 'bg-primary animate-pulse'}`} />
-                          <span>Generating email template elements and keys</span>
+                          <span>Waiting for Azure AD Connect / Entra Cloud Sync (5m delay)</span>
                         </div>
                         <div className="flex items-center gap-2 text-[11px] text-slate-700">
                           <span className={`h-1.5 w-1.5 rounded-full ${step3Sub[2] === 'SUCCESS' ? 'bg-secondary' : step3Sub[1] === 'SUCCESS' ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
+                          <span>Assigning Microsoft 365 licenses via Graph API</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Stage 4: Sending Welcome Notification */}
+                <div className={`flex gap-4 p-4 rounded-xl border relative z-10 transition-all duration-300 ${getStageStyle(step4State).card}`}>
+                  <div className="shrink-0">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-300 ${getStageStyle(step4State).icon}`}>
+                      {step4State === 'RUNNING' ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : step4State === 'SUCCESS' ? (
+                        <Mail className="h-5 w-5 font-bold" />
+                      ) : (
+                        <Mail className="h-5 w-5" />
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-grow">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-bold text-xs text-on-surface">Sending Welcome Notification</h4>
+                        <p className="text-[11px] text-on-surface-variant font-body">Template: Global_Onboarding_V2 ({emailTo || 'No Target'})</p>
+                      </div>
+                      <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 tracking-wider ${getStageStyle(step4State).badge}`}>
+                        {getStageStyle(step4State).badgeLabel}
+                      </span>
+                    </div>
+
+                    {step4State === 'RUNNING' && (
+                      <div className="w-full bg-slate-200 h-1.5 rounded-full mt-3 overflow-hidden">
+                        <div className="bg-primary h-full transition-all duration-300 ease-out" style={{ width: `${step4ValuePercent}%` }} />
+                      </div>
+                    )}
+
+                    {step4State === 'RUNNING' && (
+                      <div className="mt-3 space-y-1.5 pl-3 border-l-2 border-primary/20 font-body">
+                        <div className="flex items-center gap-2 text-[11px] text-slate-700">
+                          <span className={`h-1.5 w-1.5 rounded-full ${step4Sub[1] === 'SUCCESS' ? 'bg-secondary' : 'bg-primary animate-pulse'}`} />
+                          <span>Generating email template elements and keys</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-700">
+                          <span className={`h-1.5 w-1.5 rounded-full ${step4Sub[2] === 'SUCCESS' ? 'bg-secondary' : step4Sub[1] === 'SUCCESS' ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
                           <span>Authentating via internal SMTP gateway</span>
                         </div>
                       </div>
@@ -2196,7 +2381,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
           {/* Inline Sandbox run logger console terminal */}
           <div className="space-y-1.5">
             <span className="text-xs font-bold text-slate-500 block">บันทึกความเชื่อมโยงระบบ (Sandbox Pipeline Log Console)</span>
-            <div 
+            <div
               ref={scrollRef}
               className="bg-slate-900 text-slate-100 p-4 font-mono text-[11px] rounded-lg h-40 overflow-y-auto custom-scrollbar flex flex-col gap-1 border border-slate-800 shadow-inner animate-[fadeIn_0.2s_ease-out]"
             >
@@ -2232,7 +2417,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                 <Search className="h-3.5 w-3.5 shrink-0" />
                 <span>Find Users, Contacts, and Groups</span>
               </div>
-              <button 
+              <button
                 type="button"
                 onClick={() => setIsFindGroupsOpen(false)}
                 className="hover:bg-red-600 px-2 py-0.5 transition-colors font-bold text-sm leading-none cursor-pointer"
@@ -2244,8 +2429,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
             <div className="p-4 bg-[#f0f0f0] border-b border-[#d1d1d1] grid grid-cols-12 gap-3 text-xs text-[#202124]">
               <div className="col-span-3 flex items-center justify-end font-medium">Name:</div>
               <div className="col-span-6 flex gap-2">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={searchGroupQuery}
                   onChange={(e) => setSearchGroupQuery(e.target.value)}
                   onKeyUp={(e) => { if (e.key === 'Enter') handleSearchGroups(); }}
@@ -2254,15 +2439,15 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                 />
               </div>
               <div className="col-span-3 flex flex-col gap-1">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={handleSearchGroups}
                   className="w-full h-7 bg-[#e1e1e1] border border-[#adadad] hover:bg-[#cfe3f5] hover:border-[#0067c0] font-medium transition-all text-center cursor-pointer text-xs"
                 >
                   Find Now
                 </button>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setSearchGroupQuery('')}
                   className="w-full h-7 bg-[#e1e1e1] border border-[#adadad] hover:bg-slate-200 font-medium transition-all text-center cursor-pointer text-xs"
                 >
@@ -2293,13 +2478,12 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                       foundGroupsList.map((gObj) => {
                         const isChosenInModal = selectedGroupFromModal?.name === gObj.name;
                         return (
-                          <tr 
+                          <tr
                             key={gObj.name}
                             onClick={() => setSelectedGroupFromModal(gObj)}
                             onDoubleClick={() => { setSelectedGroupFromModal(gObj); handleAddGroupFromModal(); }}
-                            className={`hover:bg-[#e8f0fe] cursor-pointer transition-colors ${
-                              isChosenInModal ? 'bg-[#0067c0] text-white hover:bg-[#0067c0]' : ''
-                            }`}
+                            className={`hover:bg-[#e8f0fe] cursor-pointer transition-colors ${isChosenInModal ? 'bg-[#0067c0] text-white hover:bg-[#0067c0]' : ''
+                              }`}
                           >
                             <td className="p-1.5 font-bold flex items-center gap-1.5">
                               <Group className={`h-4 w-4 ${isChosenInModal ? 'text-white' : 'text-green-700'}`} />
@@ -2323,14 +2507,14 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
             </div>
 
             <div className="bg-[#f0f0f0] border-t border-[#d1d1d1] p-3 flex justify-end gap-2 shrink-0 select-none">
-              <button 
+              <button
                 type="button"
-                onClick={() => setIsFindGroupsOpen(false)} 
+                onClick={() => setIsFindGroupsOpen(false)}
                 className="px-5 py-1 bg-[#e1e1e1] border border-[#adadad] hover:bg-slate-200 text-xs text-black transition-all cursor-pointer rounded-sm"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 type="button"
                 onClick={handleAddGroupFromModal}
                 disabled={!selectedGroupFromModal}
@@ -2352,7 +2536,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                 <FileText className="h-4 w-4 shrink-0" />
                 <span>Bulk Import &amp; Verify Active Directory Groups</span>
               </div>
-              <button 
+              <button
                 type="button"
                 onClick={() => setIsBulkGroupsOpen(false)}
                 className="hover:bg-red-600 px-2 py-0.5 transition-colors font-bold text-sm leading-none cursor-pointer"
@@ -2366,7 +2550,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                 <span>วางรายชื่อกลุ่มสิทธิ์ด้านล่างเพื่อตรวจสอบกับฐานข้อมูล AD (Exact Match):</span>
                 <span className="text-[10px] text-slate-500 font-normal">แยกด้วยเครื่องหมายจุลภาค (,), อัฒภาค (;) หรือขึ้นบรรทัดใหม่</span>
               </div>
-              <textarea 
+              <textarea
                 value={bulkGroupsText}
                 onChange={(e) => setBulkGroupsText(e.target.value)}
                 className="w-full p-2 border border-[#c5c6d1] bg-white text-xs h-24 font-mono focus:border-[#0067c0] focus:ring-0 outline-none resize-none"
@@ -2377,15 +2561,15 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                   <Info className="h-3 w-3 inline text-primary" /> ระบบจะแอนาไลซ์ แสวงหาเฉพาะกลุ่มสิทธิมีอยู่จริงใน LDAP สารบบ เท่านั้น
                 </p>
                 <div className="flex gap-2">
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={() => { setBulkGroupsText(''); setBulkGroupsList([]); }}
                     className="px-4 py-1.5 bg-[#e1e1e1] border border-[#adadad] hover:bg-slate-200 text-xs font-semibold cursor-pointer rounded-sm"
                   >
                     Clear All
                   </button>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={handleVerifyBulkGroups}
                     disabled={verifyingBulkGroups}
                     className="px-4 py-1.5 bg-[#0067c0] text-white border border-[#004e98] hover:bg-[#005bb2] text-xs font-black uppercase tracking-wider cursor-pointer rounded-sm flex items-center gap-1 transition-all"
@@ -2426,9 +2610,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                               <span>{gCheck.name}</span>
                             </td>
                             <td className="p-1.5">
-                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
-                                isValid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                              }`}>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${isValid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                }`}>
                                 {isValid ? '✓ Valid' : '✗ Invalid'}
                               </span>
                             </td>
@@ -2450,15 +2633,15 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
             </div>
 
             <div className="bg-[#f0f0f0] border-t border-[#d1d1d1] p-3 flex justify-end gap-2 shrink-0 select-none">
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setIsBulkGroupsOpen(false)}
                 className="px-5 py-1 bg-[#e1e1e1] border border-[#adadad] hover:bg-slate-200 text-xs text-black rounded-sm cursor-pointer"
               >
                 Cancel
               </button>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={handleAddBulkGroups}
                 disabled={bulkGroupsList.filter(g => g.status === 'Found').length === 0}
                 className="px-6 py-1 bg-[#0067c0] text-white border border-[#004e98] text-xs font-semibold rounded-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all"

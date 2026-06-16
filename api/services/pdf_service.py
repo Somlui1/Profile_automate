@@ -8,29 +8,73 @@ from core.exceptions import PDFParsingError, PDFValidationError
 
 def download_pdf_from_url(url: str) -> bytes:
     """
-    Downloads a PDF file from a given URL.
-    
-    Args:
-        url (str): The HTTP/HTTPS URL of the PDF file.
-        
-    Returns:
-        bytes: Raw binary content of the downloaded PDF.
-        
-    Raises:
-        PDFParsingError: If downloading the file fails.
+    Downloads or reads a PDF file from a given URL or local file path.
+    Supports HTTP, HTTPS, file:// protocol, and local absolute/relative paths.
     """
-    try:
-        response = requests.get(url, timeout=5)
-        response.raise_for_status()
-        
-        # Verify content type looks like a PDF
-        content_type = response.headers.get("content-type", "").lower()
-        if "application/pdf" not in content_type and not url.lower().endswith(".pdf"):
-            raise PDFParsingError("The URL does not point to a valid PDF document.")
+    url_clean = url.strip()
+    
+    # 1. Handle file:// protocol
+    if url_clean.lower().startswith("file:///"):
+        file_path = url_clean[8:]
+        # On Windows, need to handle paths like file:///C:/path
+        # url_clean[8:] will be C:/path, which is correct
+        if os.path.exists(file_path):
+            with open(file_path, "rb") as f:
+                return f.read()
+        raise PDFParsingError(f"Local file not found via file:// protocol: {file_path}")
+
+    # 2. Handle standard HTTP/HTTPS URLs
+    if url_clean.lower().startswith("http://") or url_clean.lower().startswith("https://"):
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+            response = requests.get(url_clean, headers=headers, timeout=10)
+            response.raise_for_status()
             
-        return response.content
-    except Exception as e:
-        raise PDFParsingError(f"Failed to download PDF from URL: {str(e)}")
+            # Check for PDF magic bytes (%PDF) or fallback to content-type
+            if not response.content.startswith(b"%PDF"):
+                content_type = response.headers.get("content-type", "").lower()
+                if "application/pdf" not in content_type and not url_clean.lower().endswith(".pdf"):
+                    raise PDFParsingError("The URL does not point to a valid PDF document (missing %PDF header).")
+            
+            return response.content
+        except Exception as e:
+            raise PDFParsingError(f"Failed to download PDF from URL: {str(e)}")
+
+    # 3. Handle local absolute or relative file paths
+    # Try direct path
+    if os.path.exists(url_clean):
+        with open(url_clean, "rb") as f:
+            return f.read()
+            
+    # Try path relative to project root
+    try:
+        from core.config import settings
+        # project_root calculation relative to base_dir
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        project_root = os.path.dirname(base_dir)
+    except Exception:
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        project_root = os.path.dirname(base_dir)
+        
+    rel_path = os.path.join(project_root, url_clean)
+    if os.path.exists(rel_path):
+        with open(rel_path, "rb") as f:
+            return f.read()
+            
+    # Try path relative to api directory
+    api_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    api_rel_path = os.path.join(api_dir, url_clean)
+    if os.path.exists(api_rel_path):
+        with open(api_rel_path, "rb") as f:
+            return f.read()
+
+    raise PDFParsingError(
+        f"Unable to resolve URL or local file path: {url_clean}. "
+        "Please specify a valid HTTP/HTTPS URL, a file:/// URL, or a valid local file path."
+    )
+
 
 def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
     """
