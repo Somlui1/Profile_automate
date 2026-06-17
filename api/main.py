@@ -33,6 +33,78 @@ app = FastAPI(
 @app.on_event("startup")
 def on_startup():
     init_db()
+    _print_startup_banner()
+
+def _print_startup_banner():
+    """Print a structured startup diagnostic banner to the terminal."""
+    from services.ad_service import ad_service
+    from services.papercut_service import papercut_service
+    from services.m365_service import m365_service
+
+    system_mode = settings.SYSTEM_MODE
+
+    # Detect ldap3
+    try:
+        import ldap3 as _  # noqa
+        ldap_available = True
+    except ImportError:
+        ldap_available = False
+
+    MODE_ICON = {"live": "🟢", "mock": "🟡", "debug": "🔵", "unavailable": "🔴"}
+
+    def svc_line(name: str, is_mock: bool, reasons: list[str]) -> str:
+        mode = "mock" if is_mock else "live"
+        icon = MODE_ICON.get(mode, "⚪")
+        reason_str = f"  ← {', '.join(reasons)}" if reasons else ""
+        return f"  {icon}  {name:<28} [{mode.upper()}]{reason_str}"
+
+    # Build reasons
+    ad_reasons = []
+    if system_mode == "mock":
+        ad_reasons.append("SYSTEM_MODE=mock")
+    if not ldap_available:
+        ad_reasons.append("ldap3 not installed")
+    if not settings.AD_HOSTS:
+        ad_reasons.append("AD_HOSTS empty")
+    if not (settings.AD_USER and settings.AD_PASSWORD):
+        ad_reasons.append("AD credentials missing")
+    if settings.AD_HOSTS and settings.AD_USER and ldap_available and not ad_service._real_ad_working:
+        ad_reasons.append("connection failed at startup")
+
+    pc_reasons = []
+    if system_mode == "mock":
+        pc_reasons.append("SYSTEM_MODE=mock")
+    if not settings.PAPERCUT_API_URL:
+        pc_reasons.append("PAPERCUT_API_URL empty")
+    if not settings.PAPERCUT_API_KEY:
+        pc_reasons.append("PAPERCUT_API_KEY empty")
+
+    m365_reasons = []
+    if system_mode == "mock":
+        m365_reasons.append("SYSTEM_MODE=mock")
+    if not settings.M365_CLIENT_SECRET:
+        m365_reasons.append("M365_CLIENT_SECRET empty")
+
+    sys_icon = MODE_ICON.get(system_mode, "⚪")
+    border = "=" * 62
+
+    print(f"\n{border}")
+    print(f"  🚀  AD & Print Sync API  |  SYSTEM_MODE: {sys_icon} {system_mode.upper()}")
+    print(border)
+    print("  Service Components:")
+    print(svc_line("Active Directory (LDAP)", ad_service.mock_mode, ad_reasons))
+    print(svc_line("PaperCut Print Server",   papercut_service.mock_mode, pc_reasons))
+    print(svc_line("Microsoft 365 (Graph)",   m365_service.mock_mode, m365_reasons))
+    print(border)
+    
+    redis_url = settings.FAKE_REDIS if system_mode in ["debug", "mock"] else settings.REDIS_URL
+    print(f"  🛢️  Redis Server: {redis_url}")
+    print(border)
+    
+    print(f"  📡  Docs  : http://{settings.HOST}:{settings.PORT}/docs")
+    print(f"  📋  Status: http://{settings.HOST}:{settings.PORT}/api/v1/debug/system/status")
+    print(f"{border}\n")
+
 
 # Enable CORS (Cross-Origin Resource Sharing)
 app.add_middleware(

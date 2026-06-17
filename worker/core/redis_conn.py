@@ -5,9 +5,9 @@ import logging
 
 logger = logging.getLogger("app.core.redis")
 
-# Select connection URL based on MOCK_REDIS setting
-redis_url = settings.FAKE_REDIS if settings.MOCK_REDIS else settings.REDIS_URL
-logger.info(f"Connecting to Redis at {redis_url} (mock_mode={settings.MOCK_REDIS})")
+# Select connection URL based on SYSTEM_MODE setting
+redis_url = settings.FAKE_REDIS if settings.SYSTEM_MODE in ["debug", "mock"] else settings.REDIS_URL
+logger.info(f"Connecting to Redis at {redis_url} (system_mode={settings.SYSTEM_MODE})")
 
 redis_conn = None
 sync_queue = None

@@ -3,4 +3,4 @@ Write-Host "🚀 Starting RQ Worker..." -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
 
 & .\.venv\Scripts\Activate.ps1
-uvicorn api.main:app --host localhost --port 8000 --reload
+python worker/run.py

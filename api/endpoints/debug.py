@@ -34,6 +34,106 @@ def set_system_mode(payload: ModeRequest):
     logger.info(f"System mode changed dynamically to: {payload.mode} (SYSTEM_MODE={settings.SYSTEM_MODE})")
     return {"status": "success", "mode": settings.SYSTEM_MODE}
 
+@router.get("/system/status")
+def get_system_status():
+    """
+    Returns the current system mode and the operating mode of each service component.
+    Useful for diagnosing why a service is running in mock/live mode.
+    """
+    from services.ad_service import ad_service
+    from services.papercut_service import papercut_service
+    from core.redis_conn import redis_conn, sync_queue
+
+    system_mode = settings.SYSTEM_MODE
+
+    # --- AD Service diagnostics ---
+    try:
+        from ldap3 import Server as _  # noqa
+        ldap_available = True
+    except ImportError:
+        ldap_available = False
+
+    ad_has_hosts = len(settings.AD_HOSTS) > 0
+    ad_has_creds = bool(settings.AD_USER and settings.AD_PASSWORD)
+
+    ad_mock_reasons = []
+    if system_mode == "mock":
+        ad_mock_reasons.append("SYSTEM_MODE is 'mock'")
+    if not ldap_available:
+        ad_mock_reasons.append("ldap3 library not installed")
+    if not ad_has_hosts:
+        ad_mock_reasons.append("AD_HOSTS not configured")
+    if not ad_has_creds:
+        ad_mock_reasons.append("AD_USER or AD_PASSWORD missing")
+    if ad_has_hosts and ad_has_creds and ldap_available and not ad_service._real_ad_working:
+        ad_mock_reasons.append("AD server connection failed at startup")
+
+    ad_mode = "mock" if ad_service.mock_mode else "live"
+
+    # --- PaperCut Service diagnostics ---
+    pc_mock_reasons = []
+    if system_mode == "mock":
+        pc_mock_reasons.append("SYSTEM_MODE is 'mock'")
+    if not settings.PAPERCUT_API_URL:
+        pc_mock_reasons.append("PAPERCUT_API_URL not configured")
+    if not settings.PAPERCUT_API_KEY:
+        pc_mock_reasons.append("PAPERCUT_API_KEY not configured")
+
+    pc_mode = "mock" if papercut_service.mock_mode else "live"
+
+    # --- M365 Service diagnostics ---
+    m365_mock_reasons = []
+    if system_mode == "mock":
+        m365_mock_reasons.append("SYSTEM_MODE is 'mock'")
+    if not settings.M365_CLIENT_SECRET:
+        m365_mock_reasons.append("M365_CLIENT_SECRET not configured")
+
+    from services.m365_service import m365_service
+    m365_mode = "mock" if m365_service.mock_mode else "live"
+
+    # --- Redis diagnostics ---
+    redis_ok = False
+    try:
+        if redis_conn:
+            redis_conn.ping()
+            redis_ok = True
+    except Exception:
+        redis_ok = False
+
+    return {
+        "system_mode": system_mode,
+        "services": {
+            "active_directory": {
+                "mode": ad_mode,
+                "hosts": settings.AD_HOSTS,
+                "base_dn": settings.AD_BASE_DN,
+                "ldap3_installed": ldap_available,
+                "has_hosts": ad_has_hosts,
+                "has_credentials": ad_has_creds,
+                "connection_ok": ad_service._real_ad_working,
+                "mock_reasons": ad_mock_reasons,
+            },
+            "papercut": {
+                "mode": pc_mode,
+                "api_url": settings.PAPERCUT_API_URL or "(not set)",
+                "has_api_key": bool(settings.PAPERCUT_API_KEY),
+                "mock_reasons": pc_mock_reasons,
+            },
+            "microsoft_365": {
+                "mode": m365_mode,
+                "tenant_id": settings.M365_TENANT_ID or "(not set)",
+                "client_id": settings.M365_CLIENT_ID or "(not set)",
+                "has_client_secret": bool(settings.M365_CLIENT_SECRET),
+                "mock_reasons": m365_mock_reasons,
+            },
+            "redis": {
+                "mode": "live" if redis_ok else "unavailable",
+                "url": settings.REDIS_URL,
+                "connected": redis_ok,
+            },
+        }
+    }
+
 def check_debug_mode():
     if not settings.DEBUG_MODE:
         raise HTTPException(status_code=403, detail="Debug mode is disabled")

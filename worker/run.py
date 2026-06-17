@@ -21,9 +21,17 @@ project_root = os.path.dirname(os.path.abspath(__file__))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# Select connection URL based on MOCK_REDIS setting
-redis_url = settings.FAKE_REDIS if settings.MOCK_REDIS else settings.REDIS_URL
-logger.info(f"Worker connecting to Redis at {redis_url} (mock_mode={settings.MOCK_REDIS})")
+# Select connection URL based on SYSTEM_MODE setting
+redis_url = settings.FAKE_REDIS if settings.SYSTEM_MODE in ["debug", "mock"] else settings.REDIS_URL
+
+border = "=" * 62
+print(f"\n{border}")
+print(f"  🚀  RQ Worker | SYSTEM_MODE: {settings.SYSTEM_MODE.upper()}")
+print(border)
+print(f"  🛢️  Redis Server: {redis_url}")
+print(f"{border}\n")
+
+logger.info(f"Worker connecting to Redis at {redis_url} (system_mode={settings.SYSTEM_MODE})")
 
 try:
     conn = Redis.from_url(redis_url, socket_timeout=2, socket_connect_timeout=2)
@@ -35,5 +43,10 @@ except redis.ConnectionError as e:
     sys.exit(1)
 
 if __name__ == "__main__":
-    worker = Worker(queues, connection=conn)
-    worker.work(with_scheduler=False)
+    if os.name == 'nt':
+        from rq import SimpleWorker
+        logger.info("Running on Windows: using SimpleWorker")
+        worker = SimpleWorker(queues, connection=conn)
+    else:
+        worker = Worker(queues, connection=conn)
+    worker.work(with_scheduler=True)

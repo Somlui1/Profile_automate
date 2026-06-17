@@ -13,7 +13,7 @@ class Settings:
     HOST: str = os.getenv("HOST", "127.0.0.1")
     PORT: int = int(os.getenv("PORT", "8000"))
     
-    # Active Directory / LDAP
+    # Active Directory / LDAP for API
     # AD_HOSTS supports comma-separated list of Domain Controller IPs for failover
     # e.g. "10.10.10.253,10.10.10.250"
     AD_HOSTS_RAW: str = os.getenv("AD_HOSTS", "")
@@ -23,12 +23,29 @@ class Settings:
     AD_NEW_HIRE_OU: str = os.getenv("AD_NEW_HIRE_OU", "")
     AD_CONTRACT_OU: str = os.getenv("AD_CONTRACT_OU", "")
 
+    # Active Directory / LDAP for Worker (isolated credentials)
+    WORKER_AD_HOSTS_RAW: str = os.getenv("WORKER_AD_HOSTS", os.getenv("AD_HOSTS", ""))
+    WORKER_AD_USER: str = os.getenv("WORKER_AD_USER", os.getenv("AD_USER", ""))
+    WORKER_AD_PASSWORD: str = os.getenv("WORKER_AD_PASSWORD", os.getenv("AD_PASSWORD", ""))
+    WORKER_AD_BASE_DN: str = os.getenv("WORKER_AD_BASE_DN", os.getenv("AD_BASE_DN", "DC=aapico,DC=com"))
+    WORKER_AD_NEW_HIRE_OU: str = os.getenv("WORKER_AD_NEW_HIRE_OU", os.getenv("AD_NEW_HIRE_OU", ""))
+    WORKER_AD_CONTRACT_OU: str = os.getenv("WORKER_AD_CONTRACT_OU", os.getenv("AD_CONTRACT_OU", ""))
+
     @property
     def AD_HOSTS(self) -> List[str]:
         """Parse comma-separated AD_HOSTS into a list of host addresses."""
         if not self.AD_HOSTS_RAW:
             return []
         return [h.strip() for h in self.AD_HOSTS_RAW.split(",") if h.strip()]
+
+    @property
+    def WORKER_AD_HOSTS(self) -> List[str]:
+        """Parse comma-separated WORKER_AD_HOSTS into a list of host addresses."""
+        raw = self.WORKER_AD_HOSTS_RAW
+        if not raw:
+            return []
+        return [h.strip() for h in raw.split(",") if h.strip()]
+
 
     # --- Legacy aliases (backward compat) ---
     @property

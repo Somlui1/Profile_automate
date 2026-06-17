@@ -11,7 +11,7 @@ The provisioning pipeline consists of **4 core steps** executed in order:
 | Step Number | Step Key | Display Name | Sub-steps / Sub-sequences |
 |--- |--- |--- |--- |
 | **Step 1** | `ad_creation` | Active Directory Creation | 1. Check if user exists<br>2. Create AD account (Disabled)<br>3. Validate AD properties |
-| **Step 2** | `papercut_sync` | PaperCut Synchronization | 1. Force global User/Group Sync<br>2. Wait 2 seconds<br>3. Set Printer Card/PIN code |
+| **Step 2** | `papercut_sync` | PaperCut Synchronization | 1. Force global User/Group Sync<br>2. Wait 2 seconds<br>3. Set Printer Card/PIN code<br>4. Set initial print balance (100 credits) |
 | **Step 3** | `m365_license` | Microsoft 365 Licensing | 1. Wait for Azure AD Connect Sync (5m delay)<br>2. Assign M365 licenses via Graph API |
 | **Step 4** | `send_email` | Onboarding welcome email | 1. Connect to SMTP relay server<br>2. Dispatch email to supervisor & IT Support |
 
@@ -65,7 +65,24 @@ The worker uses `add_log(job_id, step, status, message)` to record steps:
 * `status`: The state of the log (`running`, `success`, `failed`, `skipped`).
 * `message`: Human-readable descriptive text.
 
-### 3.2 Step 3 Log Recording Pattern
+### 3.2 Step 2 Log Recording Pattern
+
+For **Step 2 (`papercut_sync`)**, logs are written in this order:
+
+1. **When triggering global sync:**
+   ```python
+   add_log(job_id, "papercut_sync", "running", "Triggered global PaperCut sync from Active Directory")
+   ```
+2. **When setting PIN code:**
+   ```python
+   add_log(job_id, "papercut_sync", "running", f"Successfully set printer PIN code to {print_code}")
+   ```
+3. **When setting initial balance (final step of this task):**
+   ```python
+   add_log(job_id, "papercut_sync", "success", f"Initial print balance set to 100 credits for user {username}")
+   ```
+
+### 3.3 Step 3 Log Recording Pattern
 To ensure the frontend correctly parses sub-step status, the worker MUST write logs using these exact patterns:
 
 1. **When enqueuing the delayed M365 task:**

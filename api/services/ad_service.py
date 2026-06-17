@@ -17,11 +17,11 @@ class ActiveDirectoryService:
     Handles communication with Active Directory via LDAP/LDAPS.
     Supports multiple Domain Controllers with automatic failover.
     """
-    def __init__(self):
-        self.ad_hosts: List[str] = settings.AD_HOSTS      # e.g. ["10.10.10.253", "10.10.10.250"]
-        self.bind_dn: str = settings.AD_USER               # e.g. "aapico\\msa.mcp"
-        self.bind_password: str = settings.AD_PASSWORD
-        self.base_dn: str = settings.AD_BASE_DN            # e.g. "DC=aapico,DC=com"
+    def __init__(self, hosts: Optional[List[str]] = None, user: Optional[str] = None, password: Optional[str] = None, base_dn: Optional[str] = None):
+        self.ad_hosts: List[str] = hosts if hosts is not None else settings.AD_HOSTS
+        self.bind_dn: str = user if user is not None else settings.AD_USER
+        self.bind_password: str = password if password is not None else settings.AD_PASSWORD
+        self.base_dn: str = base_dn if base_dn is not None else settings.AD_BASE_DN
         
         self.new_hire_ou: str = settings.AD_NEW_HIRE_OU
         self.contract_ou: str = settings.AD_CONTRACT_OU
