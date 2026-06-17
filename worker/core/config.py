@@ -80,6 +80,7 @@ class Settings:
     M365_TENANT_ID: str = os.getenv("M365_TENANT_ID", "a4722e58-ec99-4c3b-a34c-38620f1c4288")
     M365_CLIENT_ID: str = os.getenv("M365_CLIENT_ID", "ec1e5f36-4262-4ead-a5d7-9ab8892a950b")
     M365_CLIENT_SECRET: str = os.getenv("M365_CLIENT_SECRET", "")
+    M365_DELAY_SECONDS: int = int(os.getenv("M365_DELAY_SECONDS", "300"))
     
     # Redis Configuration
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
