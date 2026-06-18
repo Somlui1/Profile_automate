@@ -1011,15 +1011,19 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
               setStep2State('SKIPPED');
             }
           } else if (step === 'm365_license') {
-            if (status === 'running') {
+            if (status === 'running' || status === 'pending') {
               setStep3State('RUNNING');
-              if (message.includes("delayed") || message.includes("Enqueuing")) {
+              if (message.includes("Enqueuing") || message.includes("Checking if user") || message.includes("not yet synced") || message.includes("Rescheduling check")) {
                 setStep3Sub(prev => ({ ...prev, 1: 'RUNNING' }));
                 setStep3ValuePercent(35);
-              } else if (message.includes("Assigning")) {
+              } else if (message.includes("found in Azure AD") || message.includes("Setting usageLocation")) {
                 setStep3Sub(prev => ({ ...prev, 1: 'SUCCESS' }));
                 setStep3Sub(prev => ({ ...prev, 2: 'RUNNING' }));
-                setStep3ValuePercent(70);
+                setStep3ValuePercent(60);
+              } else if (message.includes("Waiting 5 seconds for replication") || message.includes("Assigning M365 licenses")) {
+                setStep3Sub(prev => ({ ...prev, 1: 'SUCCESS' }));
+                setStep3Sub(prev => ({ ...prev, 2: 'RUNNING' }));
+                setStep3ValuePercent(85);
               } else {
                 setStep3ValuePercent(50);
               }
@@ -2269,11 +2273,11 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                       <div className="mt-3 space-y-1.5 pl-3 border-l-2 border-primary/20 font-body">
                         <div className="flex items-center gap-2 text-[11px] text-slate-700">
                           <span className={`h-1.5 w-1.5 rounded-full ${step3Sub[1] === 'SUCCESS' ? 'bg-secondary' : 'bg-primary animate-pulse'}`} />
-                          <span>Waiting for Azure AD Connect / Entra Cloud Sync (5m delay)</span>
+                          <span>Waiting for Azure AD Connect / Entra Cloud Sync (2m delayed scheduler retries)</span>
                         </div>
                         <div className="flex items-center gap-2 text-[11px] text-slate-700">
                           <span className={`h-1.5 w-1.5 rounded-full ${step3Sub[2] === 'SUCCESS' ? 'bg-secondary' : step3Sub[1] === 'SUCCESS' ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
-                          <span>Assigning Microsoft 365 licenses via Graph API</span>
+                          <span>Assigning Microsoft 365 licenses via Graph API (Location set + 5s replication delay)</span>
                         </div>
                       </div>
                     )}

@@ -398,7 +398,8 @@ def _execute_m365_license(job_id: str, payload: dict):
         logger.warning(f"[WARNING] [{job_id}] Could not verify usageLocation 'TH' via API within 15 seconds. Proceeding to assign licenses as fallback.")
         add_log(job_id, "m365_license", "running", "Warning: usageLocation verification timed out, proceeding to assign licenses")
     else:
-        add_log(job_id, "m365_license", "running", "Verified usageLocation set to 'TH'")
+        add_log(job_id, "m365_license", "running", "Verified usageLocation set to 'TH'. Waiting 5 seconds for replication...")
+        time.sleep(5)
 
     # Format licenses for display in logs
     log_skus = []

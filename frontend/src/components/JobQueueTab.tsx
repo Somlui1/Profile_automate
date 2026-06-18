@@ -383,8 +383,8 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
                             let subStep1 = 'STANDBY';
                             let subStep2 = 'STANDBY';
                             if (stepName === 'm365_license') {
-                              const hasEnqueued = stepLogs.some(l => l.message.includes("delayed") || l.message.includes("Enqueuing"));
-                              const hasAssigning = stepLogs.some(l => l.message.includes("Assigning"));
+                              const hasEnqueued = stepLogs.some(l => l.message.includes("Enqueuing") || l.message.includes("Checking if user") || l.message.includes("not yet synced") || l.message.includes("Rescheduling check"));
+                              const hasAssigning = stepLogs.some(l => l.message.includes("found in Azure AD") || l.message.includes("Setting usageLocation") || l.message.includes("Waiting 5 seconds for replication") || l.message.includes("Assigning M365 licenses"));
                               const hasSuccess = stepLogs.some(l => l.message.includes("Successfully") || l.status === 'success');
                               
                               if (hasEnqueued) subStep1 = 'RUNNING';
@@ -408,11 +408,11 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
                                   <div className="mb-3 p-2.5 bg-white rounded-lg border border-outline-variant space-y-2 font-sans text-[10px]">
                                     <div className="flex items-center gap-2 text-slate-700">
                                       <span className={`h-2 w-2 rounded-full ${subStep1 === 'SUCCESS' ? 'bg-secondary' : subStep1 === 'RUNNING' ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
-                                      <span className={subStep1 === 'SUCCESS' ? 'line-through text-slate-400 font-medium' : 'font-semibold'}>Waiting for Azure AD Connect / Entra Cloud Sync (5m delay)</span>
+                                      <span className={subStep1 === 'SUCCESS' ? 'line-through text-slate-400 font-medium' : 'font-semibold'}>Waiting for Azure AD Connect / Entra Cloud Sync (2m delayed scheduler retries)</span>
                                     </div>
                                     <div className="flex items-center gap-2 text-slate-700">
                                       <span className={`h-2 w-2 rounded-full ${subStep2 === 'SUCCESS' ? 'bg-secondary' : subStep2 === 'RUNNING' ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
-                                      <span className={subStep2 === 'SUCCESS' ? 'line-through text-slate-400 font-medium' : 'font-semibold'}>Assigning Microsoft 365 licenses via Graph API</span>
+                                      <span className={subStep2 === 'SUCCESS' ? 'line-through text-slate-400 font-medium' : 'font-semibold'}>Assigning Microsoft 365 licenses via Graph API (Location set + 5s replication delay)</span>
                                     </div>
                                   </div>
                                 )}
