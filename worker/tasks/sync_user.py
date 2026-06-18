@@ -258,7 +258,10 @@ def _execute_ad_creation(job_id: str, payload: dict):
     }
     
     # Check if user already exists
+    add_log(job_id, "ad_creation", "running", "Connecting to Active Directory...", metadata={"sub_step": "connect", "sub_step_status": "running"})
     exists = ad_service.check_user_exists(username)
+    add_log(job_id, "ad_creation", "success", "Successfully connected to Active Directory.", metadata={"sub_step": "connect", "sub_step_status": "success"})
+    
     if exists:
         add_log(job_id, "ad_creation", "success", f"User {username} already exists. Skipping creation.", metadata={"sub_step": "connect", "sub_step_status": "success"})
         add_log(job_id, "ad_creation", "success", "Skipping naming as account exists.", metadata={"sub_step": "naming", "sub_step_status": "success"})
