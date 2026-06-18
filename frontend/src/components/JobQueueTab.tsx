@@ -6,6 +6,9 @@
 import React, { useState, useEffect } from 'react';
 import { Job, JobLog } from '../types';
 import { 
+  Cloud,
+  UserCheck,
+  Mail,
   Play, 
   Pause, 
   Trash2, 

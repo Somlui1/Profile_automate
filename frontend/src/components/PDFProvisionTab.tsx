@@ -37,7 +37,12 @@ import {
   UserCheck,
   Info,
   Folder,
-  FolderOpen
+  FolderOpen,
+  Cloud,
+  HelpCircle,
+  Database,
+  Hourglass,
+  Printer
 } from 'lucide-react';
 
 interface PDFProvisionTabProps {
