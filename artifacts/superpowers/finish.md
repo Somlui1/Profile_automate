@@ -1,25 +1,37 @@
-# Execution Summary: Graph API Pre-check, usageLocation & Health Checks
+## Summary of Changes
 
-## Changes Implemented
+### 1. Enhanced Microsoft Graph API Error Handling
+- **Files**: [m365_service.py](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/services/m365_service.py)
+- **Details**: 
+  - Updated HTTP request wrappers in `_get_access_token`, `check_user_exists`, `set_usage_location`, `resolve_sku_ids`, and `assign_licenses` to catch `urllib.error.HTTPError` specifically.
+  - Decoded and logged the full HTTP response body from the Graph API (`e.read().decode('utf-8')`) when raising exceptions to make debugging easy and display the exact root cause in the logs.
+  - Eliminated potential console logging encoding errors by ensuring no Unicode emojis are present.
 
-1. **M365 `usageLocation` Requirement (Fix for HTTP 400)**
-   - Added `set_usage_location(upn, "TH")` method to `m365_service.py` to invoke `PATCH /v1.0/users/{upn}`.
-   - Integrated this into `worker/tasks/sync_user.py` immediately before the `assignLicense` Graph API call.
-   - Added corresponding `add_log(job_id, "m365_license", "running", "Setting usageLocation to 'TH' for user {upn}")` to ensure the frontend step tracker correctly reflects this step.
+### 2. Log Licenses and Added Propagation Delay Retry Logic
+- **Files**: [sync_user.py](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/tasks/sync_user.py)
+- **Details**:
+  - Added logging in `_execute_m365_license` that explicitly lists the targeted SKU IDs and names being assigned before invoking the API.
+  - Wrapped `m365_service.assign_licenses` in a 3-attempt retry loop with progressive backoff delay (5s, 10s).
+  - Configured the retry to trigger specifically when the exception matches the `LicenseAssignmentCannotBeDoneForUserWithNoUsageLocationSpecified` error string to handle Azure AD replication delays of the user's `usageLocation`.
 
-2. **Startup Health Checks for Worker Debugging**
-   - Implemented `check_database` and `check_backend_api` in `worker/services/health_check.py`.
-   - Modified `worker/run.py` to execute all connection checks (AD, PaperCut, Redis, Graph API, DB, Backend API) BEFORE starting the worker processing loop.
-   - Prints clear status indicators (`✅` or `❌`) to the worker console to simplify debugging network/credential issues on container boot.
+## Verification Commands & Results
 
-3. **Frontend Integration via `sequence.md`**
-   - Updated `worker/sequence.md` with explicit specifications for the **Preflight (Step 0)**.
-   - Detailed the expected log patterns and job status mapping (`failed`) so `PDFProvisionTab.tsx` can correctly render a UI failure modal/alert if Graph API connection fails prior to pipeline start.
+### 1. Syntax and Import Checks
+- **Command**: `python -c "import sys; sys.path.append('worker'); from services.m365_service import m365_service; print('Import OK')"`
+- **Result**: `Import OK` (Pass)
 
-## Verification
-- Code successfully loaded via `python -c "import run"` which triggered the new startup checks.
-- Logic visually verified: `check_user_exists` → `set_usage_location` → `assign_licenses` is implemented in the proper chronological order with correct error handling.
+### 2. Standalone End-to-End Step Verification
+- **Command**: `python temp/test_m365_step.py`
+- **Result**: Pass
+  ```text
+  [RUNNING] m365_license: Checking if user aduc.test@aapico.com exists in Azure AD (attempt 1/7)
+  [RUNNING] m365_license: User aduc.test@aapico.com found in Azure AD. Resolving SKUs and assigning licenses...
+  [RUNNING] m365_license: Setting usageLocation to 'TH' for user aduc.test@aapico.com
+  [RUNNING] m365_license: Assigning M365 licenses: ENTERPRISEPACK
+  [SUCCESS] m365_license: Successfully assigned 1 M365 licenses to user aduc.test
+  [PASS] M365 License Step Completed Successfully.
+  ```
 
-## Next Steps
-- Start the worker container using `python worker/run.py` to view the new startup checks in action.
-- Update `frontend/src/components/PDFProvisionTab.tsx` (in the future, based on `sequence.md`) to parse and display the `preflight` logs and `usageLocation` progress.
+## Follow-ups & Manual Validation
+- Monitor the docker logs (`worker-1`) during the next live user sync run. 
+- If any other HTTP 400 Bad Request error occurs, the log will now print the exact Microsoft Graph JSON response explaining the failure, enabling immediate correction.

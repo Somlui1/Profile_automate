@@ -390,8 +390,24 @@ def _execute_m365_license(job_id: str, payload: dict):
         else:
             log_skus.append(str(sku))
     
-    # Assign licenses using Microsoft Graph Service
-    m365_service.assign_licenses(upn, sku_ids)
+    logger.info(f"[{job_id}] Preparing to assign {len(sku_ids)} M365 licenses to user {upn}: {', '.join(log_skus)}")
+    add_log(job_id, "m365_license", "running", f"Assigning M365 licenses: {', '.join(log_skus)}")
+    
+    # Assign licenses using Microsoft Graph Service with a retry for usageLocation propagation delay
+    max_assign_attempts = 3
+    for attempt in range(max_assign_attempts):
+        try:
+            m365_service.assign_licenses(upn, sku_ids)
+            break
+        except Exception as e:
+            is_propagation_error = "licenseassignmentcannotbedoneforuserwithnousagelocationspecified" in str(e).lower().replace(" ", "")
+            if is_propagation_error and attempt < max_assign_attempts - 1:
+                retry_delay = 5 * (attempt + 1)
+                logger.warning(f"[WARNING] [{job_id}] License assignment failed due to usageLocation propagation delay. Retrying in {retry_delay} seconds (attempt {attempt + 1}/{max_assign_attempts})...")
+                time.sleep(retry_delay)
+            else:
+                raise e
+                
     add_log(job_id, "m365_license", "success", f"Successfully assigned {len(sku_ids)} M365 licenses to user {username}")
 
 def run_m365_license_task(job_id: str, payload: dict):

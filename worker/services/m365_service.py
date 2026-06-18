@@ -55,6 +55,10 @@ class Microsoft365Service:
             with urllib.request.urlopen(req, timeout=10) as response:
                 res = json.loads(response.read().decode("utf-8"))
                 return res["access_token"]
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode("utf-8")
+            logger.error(f"Failed to fetch Microsoft Graph access token: {e} - Detail: {error_body}")
+            raise Exception(f"Microsoft Graph Auth Failed: {e} - Detail: {error_body}")
         except Exception as e:
             logger.error(f"Failed to fetch Microsoft Graph access token: {e}")
             raise Exception(f"Microsoft Graph Auth Failed: {e}")
@@ -85,8 +89,9 @@ class Microsoft365Service:
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 return False
-            logger.error(f"Failed to check user existence for {user_principal_name}: {e}")
-            raise Exception(f"M365 User Existence Check Error: {e}")
+            error_body = e.read().decode("utf-8")
+            logger.error(f"Failed to check user existence for {user_principal_name}: {e} - Detail: {error_body}")
+            raise Exception(f"M365 User Existence Check Error: {e} - Detail: {error_body}")
         except Exception as e:
             logger.error(f"Failed to check user existence for {user_principal_name}: {e}")
             raise Exception(f"M365 User Existence Check Error: {e}")
@@ -124,6 +129,10 @@ class Microsoft365Service:
                     body = response.read().decode("utf-8")
                     logger.error(f"MS Graph returned status code {status_code} on PATCH usageLocation: {body}")
                     return False
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode("utf-8")
+            logger.error(f"Failed to set usageLocation for {user_principal_name}: {e} - Detail: {error_body}")
+            raise Exception(f"M365 Set Usage Location API Error: {e} - Detail: {error_body}")
         except Exception as e:
             logger.error(f"Failed to set usageLocation for {user_principal_name}: {e}")
             raise Exception(f"M365 Set Usage Location API Error: {e}")
@@ -185,7 +194,11 @@ class Microsoft365Service:
                         resolved.append(sku)
                 return resolved
         except Exception as e:
-            logger.error(f"Failed to fetch subscribedSkus: {e}")
+            if isinstance(e, urllib.error.HTTPError):
+                error_body = e.read().decode("utf-8")
+                logger.error(f"Failed to fetch subscribedSkus: {e} - Detail: {error_body}")
+            else:
+                logger.error(f"Failed to fetch subscribedSkus: {e}")
             logger.warning("Using fallback SKU mapping due to error.")
             
             fallback_map = {
@@ -257,6 +270,10 @@ class Microsoft365Service:
                     body = response.read().decode("utf-8")
                     logger.error(f"MS Graph returned status code {status_code}: {body}")
                     return False
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode("utf-8")
+            logger.error(f"Failed to assign M365 licenses for {user_principal_name}: {e} - Detail: {error_body}")
+            raise Exception(f"M365 License Assignment API Error: {e} - Detail: {error_body}")
         except Exception as e:
             logger.error(f"Failed to assign M365 licenses for {user_principal_name}: {e}")
             raise Exception(f"M365 License Assignment API Error: {e}")

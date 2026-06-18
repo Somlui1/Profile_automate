@@ -1,97 +1,46 @@
-# Brainstorm: ปรับปรุงขั้นตอน M365 License Assignment ให้ไม่เกิดข้อผิดพลาด
-
 ## Goal
-
-ปรับปรุงขั้นตอน M365 License Assignment ใน provisioning pipeline ให้สามารถจัดการกับ **ความไม่แน่นอนของเวลา Azure AD Connect Sync** ได้อย่างน่าเชื่อถือ — ไม่ว่า user จะถูก sync ขึ้น Azure AD ช้าหรือเร็ว ระบบต้องสามารถ assign license ได้สำเร็จโดยไม่ fail
+Diagnose and resolve the `HTTP 400: Bad Request` error when assigning M365 licenses during Step 3 (`m365_license`) in the live `worker` task pipeline, ensuring stable and reliable license assignment.
 
 ## Constraints
+- Do not introduce any emojis in the source code, comments, or log messages. Use clear text prefixes like `[INFO]`, `[WARNING]`, `[FAILED]`, `[SUCCESS]`.
+- Must work seamlessly within the Docker worker environment (`worker-1`).
+- Must handle the case of replication delays in MS Graph API where a newly created user or a recently modified user profile (e.g. `usageLocation`) is not immediately ready for license assignment.
 
-1. **Azure AD Connect Sync interval ไม่สามารถควบคุมได้ 100%** — ตั้งไว้ 5 นาทีแต่อาจใช้เวลามากกว่า (เช่น 7-10 นาที ในกรณี load สูง หรือ sync cycle พลาดรอบ)
-2. **ไม่ต้องการเปลี่ยน infrastructure ใหญ่** — ต้องทำงานภายใน RQ Worker + Redis queue ที่มีอยู่
-3. **ต้องไม่ block pipeline ถาวร** — ต้องมี max retry / timeout เพื่อป้องกัน infinite loop
-4. **ต้อง log สถานะย่อยที่ชัดเจน** — เพื่อให้ frontend แสดง progress ที่แม่นยำ
-5. **Credential ปัจจุบัน (Client Credentials flow) ถูกต้อง** — ปัญหาไม่ได้อยู่ที่ authentication
-
-## Known Context
-
-### สถาปัตยกรรมปัจจุบัน
-- **Pipeline**: AD Create → PaperCut Sync → **(5m delay)** → M365 License → Send Email
-- **Delay mechanism**: `sync_queue.enqueue_in(timedelta(seconds=300), ...)` — fixed delay 5 นาที
-- **SYSTEM_MODE**: `live` (ไม่ใช่ mock — ดังนั้นเรียก Graph API จริง)
-- **Error ที่เกิด**: `HTTP 400: Bad Request` จาก MS Graph `assignLicense` API
-
-### Root Cause Analysis
-1. **Primary**: User ยังไม่ sync ขึ้น Azure AD เมื่อ Graph API ถูกเรียก
-   - Azure AD Connect sync ทุก 5 นาที แต่ timing ไม่ deterministic
-   - Fixed 5 นาทีอาจไม่พอ — user อาจเพิ่ง miss sync cycle
-2. **Secondary Bug**: SKU list ถูกส่งเป็น strings (`["sku-ems", "sku-standardpack"]`) แต่ `assign_licenses()` ต้องการ `List[Dict]` ที่มี key `skuId` → `add_licenses` เป็น list ว่าง → Graph API ได้ payload ไม่ถูกต้อง
+## Known context
+- Standalone script `temp/test_m365_step.py` executes successfully. This is likely because the user `aduc.test@aapico.com` had already been created, and the `usageLocation` had time to propagate in Azure AD before the manual script was run.
+- During the live pipeline run, `m365_service.set_usage_location` is called, and `m365_service.assign_licenses` is invoked immediately afterwards. Since Azure AD replication is asynchronous, this immediate invocation often fails with an HTTP 400 error (e.g., if Azure AD has not fully propagated the `usageLocation` to all endpoints).
+- The current implementation of `m365_service.py` handles exceptions generically under `except Exception as e:` and does not read/log the details of `urllib.error.HTTPError` responses (the Graph API returns a JSON body with a specific error message explaining why the request failed). This makes debugging difficult.
+- In `worker/tasks/sync_user.py`, the licenses defaults to `STANDARDPACK` if the department is not "engineering". If the tenant does not have `STANDARDPACK` licenses or the ID is incorrect for this tenant (which uses `ENTERPRISEPACK`), the assignment will fail with HTTP 400.
 
 ## Risks
+- **Graph API Replication Delay**: Azure AD can take a few seconds to a few minutes to propagate `usageLocation` updates. Immediate assignment will fail if not retried or delayed.
+- **Incorrect License SKU Configuration**: If the tenant lacks the specified SKU (e.g., `STANDARDPACK` vs `ENTERPRISEPACK`), the API will return HTTP 400 permanently.
+- **Hidden Graph API errors**: Without extracting the HTTP error response body, we might miss other causes of HTTP 400 (e.g. out of license seats, invalid user status).
 
-| Risk | Severity | Mitigation |
-|---|---|---|
-| User ไม่ถูก sync ขึ้น Azure AD เลย (sync broken) | 🔴 High | ตั้ง max retry + alert admin เมื่อ timeout |
-| Retry loop block worker thread นานเกินไป | 🟡 Medium | ใช้ RQ re-enqueue แทน blocking sleep |
-| Graph API rate limiting จาก retry มากเกินไป | 🟢 Low | ใช้ exponential backoff + max 6 retries |
-| SKU ID format ผิด (string แทน dict) | 🔴 High | แก้ normalize_payload ให้ map SKU name → GUID |
-| Client Secret หมดอายุ | 🟡 Medium | เพิ่ม credential health check / เตือนล่วงหน้า |
+## Options (2–4)
 
-## Options (4)
+### Option 1: Enhance Graph API Error Handling to Log Details
+Modify `worker/services/m365_service.py` to specifically catch `urllib.error.HTTPError`, read the error response body (`e.read().decode('utf-8')`), parse the JSON message, and log/raise the detailed Graph API error description. 
+- *Pros*: Exposes the exact root cause of any Graph API error in the logs immediately, resolving the lack of visibility.
+- *Cons*: Does not solve the replication delay by itself, but makes diagnosing it easy.
 
-### Option 1: Exponential Backoff Retry (Simple)
-- **วิธีการ**: เมื่อ `assign_licenses()` fail ด้วย HTTP 400 → re-enqueue task กลับเข้า queue ด้วย delay ที่เพิ่มขึ้นเรื่อยๆ (1m, 2m, 4m, 8m...)
-- **ข้อดี**: ง่ายที่สุด, ไม่ต้องเปลี่ยน architecture
-- **ข้อเสีย**: ไม่รู้ว่า user sync แล้วหรือยัง — retry อาจ fail หลายครั้งโดยไม่จำเป็น
-- **Complexity**: ⭐ Low
+### Option 2: Introduce a Wait Delay and Retry Logic in Step 3
+Add a retry loop or short delay (e.g., 5-10 seconds) between setting the `usageLocation` and assigning the license, or catch license assignment failures and retry up to 3 times with backoff if the error indicates a propagation delay (e.g., missing usage location).
+- *Pros*: Directly addresses the asynchronous replication delay of `usageLocation` in Azure AD.
+- *Cons*: Might slightly increase job execution time (by a few seconds) during normal runs.
 
-### Option 2: Graph API Pre-check (Poll Before Assign)
-- **วิธีการ**: ก่อน assign license ให้ **เรียก `GET /users/{upn}` ก่อน** เพื่อตรวจว่า user มีอยู่ใน Azure AD แล้วหรือยัง ถ้ายังไม่มี → re-enqueue ด้วย delay
-- **ข้อดี**: รู้แน่ชัดว่า user พร้อมแล้วก่อน assign → ลด error rate เป็น 0
-- **ข้อเสีย**: ต้องเพิ่ม API call 1 ครั้งต่อ attempt
-- **Complexity**: ⭐⭐ Medium
-
-### Option 3: Azure AD Webhook / Change Notification
-- **วิธีการ**: ลงทะเบียน Microsoft Graph Change Notification ให้ trigger เมื่อมี user ใหม่ sync ขึ้นมา → จึงค่อย enqueue M365 task
-- **ข้อดี**: Real-time, ไม่มี polling waste
-- **ข้อเสีย**: ต้องตั้ง webhook endpoint (ต้อง public URL), ซับซ้อนมาก, ต้อง maintain subscription renewal
-- **Complexity**: ⭐⭐⭐⭐ Very High
-
-### Option 4: Hybrid — Graph Pre-check + Exponential Re-enqueue (Recommended)
-- **วิธีการ**: 
-  1. รักษา initial delay 5 นาที (ให้ sync cycle แรกผ่าน)
-  2. เมื่อ task execute → **เรียก `GET /users/{upn}` ก่อน**
-  3. ถ้า user ยังไม่มี → **re-enqueue กลับเข้า queue** ด้วย exponential backoff (60s, 120s, 240s...)
-  4. ถ้า user มีแล้ว → assign license ตามปกติ
-  5. ตั้ง max retry = 6 ครั้ง (รวม ~30 นาที max wait) → ถ้าเกิน → fail พร้อม alert
-- **ข้อดี**: 
-  - ไม่ block worker thread (ใช้ RQ re-enqueue)
-  - รู้ 100% ว่า user พร้อมก่อน assign
-  - มี safety net (max retry + timeout)
-  - Log sub-step ชัดเจนสำหรับ frontend
-- **ข้อเสีย**: ต้องเก็บ retry count ใน payload
-- **Complexity**: ⭐⭐ Medium
+### Option 3: Standardize the Default/Configurable License Assignment
+Update the payload normalization in `worker/tasks/sync_user.py` to ensure the correct default SKU is assigned, and log the SKUs being assigned before invoking the API.
+- *Pros*: Prevents issues where users are assigned invalid SKUs (like `STANDARDPACK` when only `ENTERPRISEPACK` is available in the tenant).
+- *Cons*: Requires understanding which licenses are active in the target tenant.
 
 ## Recommendation
+Implement a combination of Option 1 and Option 2:
+1. **Expose error details**: Update `worker/services/m365_service.py` to catch `urllib.error.HTTPError`, read the error response body, and log it.
+2. **Handle replication delay**: Add a retry mechanism or a short delay (e.g., sleep 5-10 seconds) when assigning licenses in `_execute_m365_license` or `assign_licenses`, and log the SKUs being assigned.
 
-**➡️ Option 4: Hybrid (Graph Pre-check + Exponential Re-enqueue)** เป็นตัวเลือกที่ดีที่สุด เพราะ:
-
-1. **แก้ root cause ตรงจุด**: ตรวจสอบก่อนว่า user sync แล้วจริง ไม่ใช่แค่เดาด้วย fixed delay
-2. **ไม่ block worker**: ใช้ RQ re-enqueue → worker ว่างไปรับงานอื่นระหว่างรอ
-3. **Fail-safe**: max retry ป้องกัน infinite loop
-4. **Frontend-friendly**: log sub-step ชัดเจน (waiting → checking → assigning → done)
-
-### นอกจากนี้ต้องแก้ bug เร่งด่วน:
-- **แก้ SKU format**: `normalize_payload()` ต้อง map SKU part number strings เป็น `{"skuId": "GUID", "skuPartNumber": "name"}` dicts
-- **เพิ่ม `check_user_exists()` method** ใน `m365_service.py` เพื่อเรียก `GET /users/{upn}`
-
-## Acceptance Criteria
-
-- [ ] M365 license assignment ไม่ fail ด้วย HTTP 400 เมื่อ user ยังไม่ sync
-- [ ] ระบบ retry อัตโนมัติ สูงสุด 6 ครั้ง ด้วย exponential backoff
-- [ ] ก่อน assign license ต้องตรวจ user existence ผ่าน Graph API เสมอ
-- [ ] SKU IDs ถูก resolve จาก part number เป็น GUID ก่อนส่ง API
-- [ ] Log sub-steps ชัดเจน: "Checking user existence" → "User found" → "Assigning licenses" → "Success"
-- [ ] Max wait time ไม่เกิน 30 นาที → ถ้าเกินให้ fail พร้อม error message ที่ actionable
-- [ ] Worker thread ไม่ถูก block ระหว่างรอ (ใช้ re-enqueue ไม่ใช่ sleep)
-- [ ] Frontend แสดง retry count และสถานะการรอ sync ได้ถูกต้อง
-- [ ] อัปเดตเอกสาร `.agent/project_structure.md`, `worker/workspace.md`, `worker/sequence.md` ให้สะท้อนการเปลี่ยนแปลง
+## Acceptance criteria
+1. Failed Graph API requests log the detailed HTTP error body from Microsoft Graph.
+2. Step 3 does not fail due to a temporary Azure AD replication delay of `usageLocation`.
+3. The exact SKUs being assigned are clearly printed in the worker log before calling `assign_licenses`.
+4. No emojis are used in the modified codebase or log strings.
