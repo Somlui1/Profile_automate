@@ -37,6 +37,18 @@ def create_sync_job(payload: UserSyncRequest):
     add_log(job_id, "queue", "success", "Job enqueued successfully")
     return {"job_id": job_id, "status": "queued"}
 
+@router.get("/steps")
+def get_steps_schema():
+    import os
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(current_dir))
+    schema_path = os.path.join(project_root, "worker", "steps_schema.json")
+    try:
+        with open(schema_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="steps_schema.json not found")
+
 @router.get("/")
 def get_jobs(limit: int = 50, offset: int = 0):
     jobs = list_jobs(limit, offset)
@@ -118,7 +130,8 @@ async def job_stream(request: Request, job_id: str):
                         "data": json.dumps({
                             "step": log["step"],
                             "status": log["status"],
-                            "message": log["message"]
+                            "message": log["message"],
+                            "metadata": log.get("metadata")
                         })
                     }
                     last_log_id = log["id"]

@@ -260,7 +260,7 @@ def _execute_ad_creation(job_id: str, payload: dict):
     # Check if user already exists
     exists = ad_service.check_user_exists(username)
     if exists:
-        add_log(job_id, "ad_creation", "success", f"User {username} already exists. Skipping creation.")
+        add_log(job_id, "ad_creation", "success", f"User {username} already exists. Skipping creation.", metadata={"sub_step": "connect", "sub_step_status": "success"})
     else:
         # Create user in Active Directory
         is_contractor = payload.get("is_contractor", False)
@@ -271,7 +271,7 @@ def _execute_ad_creation(job_id: str, payload: dict):
         )
         if not success:
             raise Exception("AD creation failed in ad_service")
-        add_log(job_id, "ad_creation", "success", f"Created AD account in {ad_dn}")
+        add_log(job_id, "ad_creation", "success", f"Created AD account in {ad_dn}", metadata={"sub_step": "naming", "sub_step_status": "success"})
         
     # Validate properties in Active Directory
     expected_props = {
@@ -302,8 +302,8 @@ def _execute_ad_creation(job_id: str, payload: dict):
     val_success, passes, failures = ad_service.validate_user(username, expected_props)
     if val_success:
         for p in passes:
-            add_log(job_id, "ad_creation", "running", f"Verify Pass: {p} matches expected value")
-        add_log(job_id, "ad_creation", "success", "AD Account validation passed successfully")
+            add_log(job_id, "ad_creation", "running", f"Verify Pass: {p} matches expected value", metadata={"sub_step": "verify", "sub_step_status": "running"})
+        add_log(job_id, "ad_creation", "success", "AD Account validation passed successfully", metadata={"sub_step": "verify", "sub_step_status": "success"})
     else:
         raise Exception(f"AD Validation failures: {failures}")
 
@@ -319,7 +319,7 @@ def _execute_papercut_sync(job_id: str, payload: dict):
     
     # Trigger force user sync from AD
     papercut_service.force_user_sync()
-    add_log(job_id, "papercut_sync", "running", "Triggered global PaperCut sync from Active Directory")
+    add_log(job_id, "papercut_sync", "running", "Triggered global PaperCut sync from Active Directory", metadata={"sub_step": "trigger", "sub_step_status": "running"})
     
     # Wait a moment for synchronization to process on papercut service side
     time.sleep(2)
@@ -328,20 +328,20 @@ def _execute_papercut_sync(job_id: str, payload: dict):
     if print_code:
         pin_success = papercut_service.set_user_primary_card(username, print_code)
         if pin_success:
-            add_log(job_id, "papercut_sync", "running", f"Successfully set printer PIN code to {print_code}")
+            add_log(job_id, "papercut_sync", "running", f"Successfully set printer PIN code to {print_code}", metadata={"sub_step": "sync", "sub_step_status": "running"})
         else:
-            add_log(job_id, "papercut_sync", "running", "Synchronized user, but PIN code assignment returned success=False (mock fallback)")
+            add_log(job_id, "papercut_sync", "running", "Synchronized user, but PIN code assignment returned success=False (mock fallback)", metadata={"sub_step": "sync", "sub_step_status": "running"})
     else:
-        add_log(job_id, "papercut_sync", "running", "Synchronized user. No print_code was specified in payload.")
+        add_log(job_id, "papercut_sync", "running", "Synchronized user. No print_code was specified in payload.", metadata={"sub_step": "sync", "sub_step_status": "running"})
 
     # Set initial print balance = 100 for all new users
     balance_success = papercut_service.set_user_account_balance(
         username, balance=100.0, comment="Initial print balance for new employee"
     )
     if balance_success:
-        add_log(job_id, "papercut_sync", "success", f"Initial print balance set to 100 credits for user {username}")
+        add_log(job_id, "papercut_sync", "success", f"Initial print balance set to 100 credits for user {username}", metadata={"sub_step": "sync", "sub_step_status": "success"})
     else:
-        add_log(job_id, "papercut_sync", "success", f"PaperCut sync complete. Balance assignment returned False for user {username}")
+        add_log(job_id, "papercut_sync", "success", f"PaperCut sync complete. Balance assignment returned False for user {username}", metadata={"sub_step": "sync", "sub_step_status": "success"})
 
 def run_papercut_task(job_id: str, payload: dict):
     _run_step("papercut_sync", job_id, payload, _execute_papercut_sync)
@@ -359,7 +359,7 @@ def _execute_m365_license(job_id: str, payload: dict):
     retry_count = payload.get("_m365_sync_retry_count", 0)
     MAX_RETRIES = 3
     
-    add_log(job_id, "m365_license", "running", f"Checking if user {upn} exists in Azure AD (attempt {retry_count + 1}/{MAX_RETRIES + 1})")
+    add_log(job_id, "m365_license", "running", f"Checking if user {upn} exists in Azure AD (attempt {retry_count + 1}/{MAX_RETRIES + 1})", metadata={"sub_step": "check", "sub_step_status": "running"})
     
     if not m365_service.check_user_exists(upn):
         if retry_count >= MAX_RETRIES:
@@ -369,18 +369,18 @@ def _execute_m365_license(job_id: str, payload: dict):
         payload["_m365_sync_retry_count"] = retry_count + 1
         
         msg = f"User {upn} not yet synced to Azure AD. Rescheduling check via scheduler in 2 minutes..."
-        add_log(job_id, "m365_license", "running", msg)
+        add_log(job_id, "m365_license", "running", msg, metadata={"sub_step": "check", "sub_step_status": "running"})
         sync_queue.enqueue_in(delay, "tasks.sync_user.run_m365_license_task", job_id, payload)
         
         from core.exceptions import M365UserNotSyncedError
         raise M365UserNotSyncedError(msg)
     
-    add_log(job_id, "m365_license", "running", f"User {upn} found in Azure AD. Resolving SKUs...")
+    add_log(job_id, "m365_license", "running", f"User {upn} found in Azure AD. Resolving SKUs...", metadata={"sub_step": "check", "sub_step_status": "success"})
     
     sku_ids = m365_service.resolve_sku_ids(sku_ids) if sku_ids else []
     
     # Set usageLocation (Required by MS Graph before assigning licenses)
-    add_log(job_id, "m365_license", "running", f"Setting usageLocation to 'TH' for user {upn}")
+    add_log(job_id, "m365_license", "running", f"Setting usageLocation to 'TH' for user {upn}", metadata={"sub_step": "usageLocation", "sub_step_status": "running"})
     m365_service.set_usage_location(upn, "TH")
     
     # Verify usageLocation has propagated in Azure AD (loop up to 5 times, 3s delay each)
@@ -396,9 +396,9 @@ def _execute_m365_license(job_id: str, payload: dict):
         
     if not verified:
         logger.warning(f"[WARNING] [{job_id}] Could not verify usageLocation 'TH' via API within 15 seconds. Proceeding to assign licenses as fallback.")
-        add_log(job_id, "m365_license", "running", "Warning: usageLocation verification timed out, proceeding to assign licenses")
+        add_log(job_id, "m365_license", "running", "Warning: usageLocation verification timed out, proceeding to assign licenses", metadata={"sub_step": "usageLocation", "sub_step_status": "running"})
     else:
-        add_log(job_id, "m365_license", "running", "Verified usageLocation set to 'TH'. Waiting 5 seconds for replication...")
+        add_log(job_id, "m365_license", "running", "Verified usageLocation set to 'TH'. Waiting 5 seconds for replication...", metadata={"sub_step": "usageLocation", "sub_step_status": "success"})
         time.sleep(5)
 
     # Format licenses for display in logs
@@ -410,7 +410,7 @@ def _execute_m365_license(job_id: str, payload: dict):
             log_skus.append(str(sku))
     
     logger.info(f"[{job_id}] Preparing to assign {len(sku_ids)} M365 licenses to user {upn}: {', '.join(log_skus)}")
-    add_log(job_id, "m365_license", "running", f"Assigning M365 licenses: {', '.join(log_skus)}")
+    add_log(job_id, "m365_license", "running", f"Assigning M365 licenses: {', '.join(log_skus)}", metadata={"sub_step": "assign", "sub_step_status": "running"})
     
     # Assign licenses using Microsoft Graph Service with a retry for usageLocation propagation delay
     max_assign_attempts = 3
@@ -427,7 +427,7 @@ def _execute_m365_license(job_id: str, payload: dict):
             else:
                 raise e
                 
-    add_log(job_id, "m365_license", "success", f"Successfully assigned {len(sku_ids)} M365 licenses to user {username}")
+    add_log(job_id, "m365_license", "success", f"Successfully assigned {len(sku_ids)} M365 licenses to user {username}", metadata={"sub_step": "assign", "sub_step_status": "success"})
 
 def run_m365_license_task(job_id: str, payload: dict):
     _run_step("m365_license", job_id, payload, _execute_m365_license)
@@ -440,11 +440,11 @@ def _execute_send_email(job_id: str, payload: dict):
     email_subject = email_profile.get("emailSubject")
     email_body = email_profile.get("emailBody")
     
-    add_log(job_id, "send_email", "running", f"Sending onboarding email notification to: {email_to}")
+    add_log(job_id, "send_email", "running", f"Sending onboarding email notification to: {email_to}", metadata={"sub_step": "send", "sub_step_status": "running"})
     
     # SMTP email dispatch simulation
     time.sleep(1)
-    add_log(job_id, "send_email", "success", f"Email notification successfully sent to {email_to} (CC: {email_cc})")
+    add_log(job_id, "send_email", "success", f"Email notification successfully sent to {email_to} (CC: {email_cc})", metadata={"sub_step": "complete", "sub_step_status": "success"})
 
 def run_send_email_task(job_id: str, payload: dict):
     _run_step("send_email", job_id, payload, _execute_send_email)

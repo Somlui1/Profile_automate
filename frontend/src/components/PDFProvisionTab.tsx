@@ -183,20 +183,11 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
 
   // --- STEP 3 STATE (PIPELINE RUN) ---
   const [currentPipelineStep, setCurrentPipelineStep] = useState<number>(1);
+  const [stepsSchema, setStepsSchema] = useState<any[]>([]);
+  const [pipelineStates, setPipelineStates] = useState<Record<string, 'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'>>({});
+  const [pipelineSubStates, setPipelineSubStates] = useState<Record<string, Record<string, 'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'>>>({});
   const [pipelineState, setPipelineOverallState] = useState<'PROCESSING' | 'DONE' | 'FAILED'>('PROCESSING');
   const [customTerminalLogs, setTerminalLogs] = useState<string[]>([]);
-  const [step1Sub, setStep1Sub] = useState<Record<number, string>>({ 1: 'STANDBY', 2: 'STANDBY', 3: 'STANDBY' });
-  const [step2Sub, setStep2Sub] = useState<Record<number, string>>({ 1: 'STANDBY', 2: 'STANDBY', 3: 'STANDBY' });
-  const [step3Sub, setStep3Sub] = useState<Record<number, string>>({ 1: 'STANDBY', 2: 'STANDBY' });
-  const [step4Sub, setStep4Sub] = useState<Record<number, string>>({ 1: 'STANDBY', 2: 'STANDBY' });
-  const [step1ValuePercent, setStep1ValuePercent] = useState(0);
-  const [step2ValuePercent, setStep2ValuePercent] = useState(0);
-  const [step3ValuePercent, setStep3ValuePercent] = useState(0);
-  const [step4ValuePercent, setStep4ValuePercent] = useState(0);
-  const [step1State, setStep1State] = useState<'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED'>('STANDBY');
-  const [step2State, setStep2State] = useState<'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED'>('STANDBY');
-  const [step3State, setStep3State] = useState<'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'>('STANDBY');
-  const [step4State, setStep4State] = useState<'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'>('STANDBY');
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -204,6 +195,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
   useEffect(() => {
     fetchLicenses();
     fetchEmailTemplate();
+    fetchStepsSchema();
     return () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -212,12 +204,48 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
   }, []);
 
   // Update DisplayName from First and Last Name
-  const handleNameTyping = (first: string, last: string) => {
+  
+  const getStepPercent = (stepKey: string) => {
+    const stepSchema = stepsSchema.find(s => s.key === stepKey);
+    if (!stepSchema || !stepSchema.sub_steps || stepSchema.sub_steps.length === 0) return pipelineStates[stepKey] === 'SUCCESS' ? 100 : 0;
+    const subState = pipelineSubStates[stepKey] || {};
+    const total = stepSchema.sub_steps.length;
+    let completed = 0;
+    stepSchema.sub_steps.forEach((sub: any) => {
+        if (subState[sub.key] === 'SUCCESS') completed += 1;
+        else if (subState[sub.key] === 'RUNNING') completed += 0.5;
+    });
+    return Math.round((completed / total) * 100);
+  };
+
+  const renderDynamicIcon = (iconName: string, state: string) => {
+    const LucideIcons: any = require('lucide-react');
+    const Icon = LucideIcons[iconName] || LucideIcons.HelpCircle;
+    if (state === 'RUNNING') return <Loader2 className="h-5 w-5 animate-spin" />;
+    if (state === 'SUCCESS') return <Check className="h-5 w-5 font-bold text-secondary" />;
+    if (state === 'SKIPPED') return <Check className="h-5 w-5 font-bold text-slate-500" />;
+    return <Icon className="h-5 w-5" />;
+  };
+
+const handleNameTyping = (first: string, last: string) => {
     setFirstName(first);
     setLastName(last);
     setDisplayName(`${first} ${last}`.trim());
     if (usernameLogon === '') {
       setUsernameLogon(`${first.toLowerCase()}.${last.substring(0, 1).toLowerCase()}`);
+    }
+  };
+
+  
+  const fetchStepsSchema = async () => {
+    try {
+      const res = await fetch('/api/v1/jobs/steps');
+      if (res.ok) {
+        const data = await res.json();
+        setStepsSchema(data.steps || []);
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -908,19 +936,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     setCurrentPipelineStep(1);
     setPipelineOverallState('PROCESSING');
     setTerminalLogs([`[${new Date().toLocaleTimeString()}] // REST API Pipeline initiated...`]);
-    setStep1State('STANDBY');
-    setStep2State('STANDBY');
-    setStep3State('STANDBY');
-    setStep4State('STANDBY');
-    setStep1ValuePercent(0);
-    setStep2ValuePercent(0);
-    setStep3ValuePercent(0);
-    setStep4ValuePercent(0);
-
-    setStep1Sub({ 1: 'STANDBY', 2: 'STANDBY', 3: 'STANDBY' });
-    setStep2Sub({ 1: 'STANDBY', 2: 'STANDBY', 3: 'STANDBY' });
-    setStep3Sub({ 1: 'STANDBY', 2: 'STANDBY' });
-    setStep4Sub({ 1: 'STANDBY', 2: 'STANDBY' });
+    
 
     // Switch view bounds
     setCurrentStep(3);
@@ -961,95 +977,26 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
       sse.addEventListener("step_update", (event) => {
         try {
           const log = JSON.parse(event.data);
-          const { step, status, message } = log;
+          const { step, status, message, metadata } = log;
 
           setTerminalData(`[${step.toUpperCase()}] ${message}`);
+          
+          if (step === 'pipeline') return;
 
-          // Update individual step progress states
-          if (step === 'ad_creation') {
-            if (status === 'running') {
-              setStep1State('RUNNING');
-              if (message.includes("Connecting")) {
-                setStep1Sub(prev => ({ ...prev, 1: 'RUNNING' }));
-                setStep1ValuePercent(15);
-              } else if (message.includes("handshake")) {
-                setStep1Sub(prev => ({ ...prev, 1: 'SUCCESS' }));
-                setStep1ValuePercent(30);
-              } else if (message.includes("naming") || message.includes("sAMAccountName")) {
-                setStep1Sub(prev => ({ ...prev, 2: 'RUNNING' }));
-                setStep1ValuePercent(50);
-              } else if (message.includes("LDAP SUCCESS") || message.includes("Verify Pass")) {
-                setStep1Sub(prev => ({ ...prev, 2: 'SUCCESS' }));
-                setStep1Sub(prev => ({ ...prev, 3: 'RUNNING' }));
-                setStep1ValuePercent(85);
-              }
-            } else if (status === 'success') {
-              setStep1State('SUCCESS');
-              setStep1Sub({ 1: 'SUCCESS', 2: 'SUCCESS', 3: 'SUCCESS' });
-              setStep1ValuePercent(100);
-            } else if (status === 'failed') {
-              setStep1State('FAILED');
-            }
-          } else if (step === 'papercut_sync') {
-            if (status === 'running') {
-              setStep2State('RUNNING');
-              if (message.includes("Triggered global PaperCut sync")) {
-                setStep2Sub(prev => ({ ...prev, 1: 'RUNNING' }));
-                setStep2ValuePercent(25);
-              } else if (message.includes("Synchronized user")) {
-                setStep2Sub(prev => ({ ...prev, 1: 'SUCCESS' }));
-                setStep2Sub(prev => ({ ...prev, 2: 'RUNNING' }));
-                setStep2ValuePercent(65);
-              }
-            } else if (status === 'success') {
-              setStep2State('SUCCESS');
-              setStep2Sub({ 1: 'SUCCESS', 2: 'SUCCESS', 3: 'SUCCESS' });
-              setStep2ValuePercent(100);
-            } else if (status === 'failed') {
-              setStep2State('FAILED');
-            } else if (status === 'skipped') {
-              setStep2State('SKIPPED');
-            }
-          } else if (step === 'm365_license') {
-            if (status === 'running' || status === 'pending') {
-              setStep3State('RUNNING');
-              if (message.includes("Enqueuing") || message.includes("Checking if user") || message.includes("not yet synced") || message.includes("Rescheduling check")) {
-                setStep3Sub(prev => ({ ...prev, 1: 'RUNNING' }));
-                setStep3ValuePercent(35);
-              } else if (message.includes("found in Azure AD") || message.includes("Setting usageLocation")) {
-                setStep3Sub(prev => ({ ...prev, 1: 'SUCCESS' }));
-                setStep3Sub(prev => ({ ...prev, 2: 'RUNNING' }));
-                setStep3ValuePercent(60);
-              } else if (message.includes("Waiting 5 seconds for replication") || message.includes("Assigning M365 licenses")) {
-                setStep3Sub(prev => ({ ...prev, 1: 'SUCCESS' }));
-                setStep3Sub(prev => ({ ...prev, 2: 'RUNNING' }));
-                setStep3ValuePercent(85);
-              } else {
-                setStep3ValuePercent(50);
-              }
-            } else if (status === 'success') {
-              setStep3State('SUCCESS');
-              setStep3Sub({ 1: 'SUCCESS', 2: 'SUCCESS' });
-              setStep3ValuePercent(100);
-            } else if (status === 'failed') {
-              setStep3State('FAILED');
-            } else if (status === 'skipped') {
-              setStep3State('SKIPPED');
-            }
-          } else if (step === 'send_email') {
-            if (status === 'running') {
-              setStep4State('RUNNING');
-              setStep4Sub(prev => ({ ...prev, 1: 'RUNNING' }));
-              setStep4ValuePercent(50);
-            } else if (status === 'success') {
-              setStep4State('SUCCESS');
-              setStep4Sub({ 1: 'SUCCESS', 2: 'SUCCESS' });
-              setStep4ValuePercent(100);
-            } else if (status === 'failed') {
-              setStep4State('FAILED');
-            } else if (status === 'skipped') {
-              setStep4State('SKIPPED');
-            }
+          setPipelineStates(prev => {
+            let newStatus = status.toUpperCase();
+            if (newStatus === 'PENDING') newStatus = 'RUNNING';
+            return { ...prev, [step]: newStatus };
+          });
+          
+          if (metadata && metadata.sub_step) {
+             setPipelineSubStates(prev => ({
+                ...prev,
+                [step]: {
+                    ...(prev[step] || {}),
+                    [metadata.sub_step]: metadata.sub_step_status.toUpperCase()
+                }
+             }));
           }
         } catch (err) {
           console.error("Error parsing step_update SSE event data:", err);
@@ -2143,191 +2090,54 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                 {/* Connector Line */}
                 <div className="absolute left-[30px] top-8 bottom-8 w-[2px] bg-slate-200 z-0"></div>
 
-                {/* Stage 1: Creating Active Directory Account */}
-                <div className={`flex gap-4 p-4 rounded-xl border relative z-10 transition-all duration-300 ${getStageStyle(step1State).card}`}>
-                  <div className="shrink-0">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-300 ${getStageStyle(step1State).icon}`}>
-                      {step1State === 'RUNNING' ? <Loader2 className="h-5 w-5 animate-spin" /> : <UserCheck className={`h-5 w-5 ${step1State === 'SUCCESS' ? 'font-bold' : ''}`} />}
+                {/* Dynamic Pipeline Stages */}
+                {stepsSchema.map((step) => {
+                  const state = pipelineStates[step.key] || 'STANDBY';
+                  const percent = getStepPercent(step.key);
+                  const subStates = pipelineSubStates[step.key] || {};
+                  
+                  return (
+                    <div key={step.key} className={`flex gap-4 p-4 rounded-xl border relative z-10 transition-all duration-300 ${getStageStyle(state).card}`}>
+                      <div className="shrink-0">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-300 ${getStageStyle(state).icon}`}>
+                          {renderDynamicIcon(step.icon, state)}
+                        </div>
+                      </div>
+                      <div className="flex-grow">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-bold text-xs text-on-surface">{step.name}</h4>
+                            <p className="text-[11px] text-on-surface-variant font-body">{step.description}</p>
+                          </div>
+                          <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 tracking-wider ${getStageStyle(state).badge}`}>
+                            {getStageStyle(state).badgeLabel}
+                          </span>
+                        </div>
+
+                        {state === 'RUNNING' && (
+                          <div className="w-full bg-slate-200 h-1.5 rounded-full mt-3 overflow-hidden">
+                            <div className="bg-primary h-full transition-all duration-300 ease-out" style={{ width: `${percent}%` }} />
+                          </div>
+                        )}
+
+                        {state === 'RUNNING' && step.sub_steps && (
+                          <div className="mt-3 space-y-1.5 pl-3 border-l-2 border-primary/20 font-body">
+                            {step.sub_steps.map((sub: any) => {
+                              const sState = subStates[sub.key] || 'STANDBY';
+                              const dotClass = sState === 'SUCCESS' ? 'bg-secondary' : sState === 'RUNNING' ? 'bg-primary animate-pulse' : 'bg-slate-300';
+                              return (
+                                <div key={sub.key} className="flex items-center gap-2 text-[11px] text-slate-700">
+                                  <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
+                                  <span>{sub.name}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex-grow">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-bold text-xs text-on-surface">Creating Active Directory Account</h4>
-                        <p className="text-[11px] text-on-surface-variant font-body">Primary Domain Controller: DC-HQ-01</p>
-                      </div>
-                      <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 tracking-wider ${getStageStyle(step1State).badge}`}>
-                        {getStageStyle(step1State).badgeLabel}
-                      </span>
-                    </div>
-
-                    {step1State === 'RUNNING' && (
-                      <div className="w-full bg-slate-200 h-1.5 rounded-full mt-3 overflow-hidden">
-                        <div className="bg-primary h-full transition-all duration-300 ease-out" style={{ width: `${step1ValuePercent}%` }} />
-                      </div>
-                    )}
-
-                    {step1State === 'RUNNING' && (
-                      <div className="mt-3 space-y-1.5 pl-3 border-l-2 border-primary/20 transition-all font-body">
-                        <div className="flex items-center gap-2 text-[11px] text-slate-700">
-                          <span className={`h-1.5 w-1.5 rounded-full ${step1Sub[1] === 'SUCCESS' ? 'bg-secondary' : 'bg-primary animate-pulse'}`} />
-                          <span>Initializing secure LDAPS SSL handshake</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-700">
-                          <span className={`h-1.5 w-1.5 rounded-full ${step1Sub[2] === 'SUCCESS' ? 'bg-secondary' : step1Sub[1] === 'SUCCESS' ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
-                          <span>Checking naming conflicts & sAMAccountName</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-700">
-                          <span className={`h-1.5 w-1.5 rounded-full ${step1Sub[3] === 'SUCCESS' ? 'bg-secondary' : step1Sub[2] === 'SUCCESS' ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
-                          <span>Constructing LDIF schema directory entries</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Stage 2: Syncing Papercut & Print Code */}
-                <div className={`flex gap-4 p-4 rounded-xl border relative z-10 transition-all duration-300 ${getStageStyle(step2State).card}`}>
-                  <div className="shrink-0">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-300 ${getStageStyle(step2State).icon}`}>
-                      {step2State === 'RUNNING' ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : step2State === 'SUCCESS' ? (
-                        <CheckCircle className="h-5 w-5 font-bold" />
-                      ) : (
-                        <Building className="h-5 w-5" />
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex-grow">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-bold text-xs text-on-surface">Syncing Papercut and Printer Code Setting</h4>
-                        <p className="text-[11px] text-on-surface-variant font-body">
-                          {step2State === 'RUNNING' ? 'Communicating with printer server...' : `Printer PIN activated matching employee profile`}
-                        </p>
-                      </div>
-                      <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 tracking-wider ${getStageStyle(step2State).badge}`}>
-                        {getStageStyle(step2State).badgeLabel}
-                      </span>
-                    </div>
-
-                    {step2State === 'RUNNING' && (
-                      <div className="w-full bg-slate-200 h-1.5 rounded-full mt-3 overflow-hidden">
-                        <div className="bg-primary h-full transition-all duration-300 ease-out" style={{ width: `${step2ValuePercent}%` }} />
-                      </div>
-                    )}
-
-                    {step2State === 'RUNNING' && (
-                      <div className="mt-3 space-y-1.5 pl-3 border-l-2 border-primary/20 font-body">
-                        <div className="flex items-center gap-2 text-[11px] text-slate-700">
-                          <span className={`h-1.5 w-1.5 rounded-full ${step2Sub[1] === 'SUCCESS' ? 'bg-secondary' : 'bg-primary animate-pulse'}`} />
-                          <span>Initiating Papercut application integration database socket</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-700">
-                          <span className={`h-1.5 w-1.5 rounded-full ${step2Sub[2] === 'SUCCESS' ? 'bg-secondary' : step2Sub[1] === 'SUCCESS' ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
-                          <span>Mapping 6-digit release authorization PIN</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-700">
-                          <span className={`h-1.5 w-1.5 rounded-full ${step2Sub[3] === 'SUCCESS' ? 'bg-secondary' : step2Sub[2] === 'SUCCESS' ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
-                          <span>Compiling printer billing allocation rules</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Stage 3: Assigning Microsoft 365 License */}
-                <div className={`flex gap-4 p-4 rounded-xl border relative z-10 transition-all duration-300 ${getStageStyle(step3State).card}`}>
-                  <div className="shrink-0">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-300 ${getStageStyle(step3State).icon}`}>
-                      {step3State === 'RUNNING' ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : step3State === 'SUCCESS' ? (
-                        <Check className="h-5 w-5 font-bold text-secondary" />
-                      ) : step3State === 'SKIPPED' ? (
-                        <Check className="h-5 w-5 font-bold text-slate-500" />
-                      ) : (
-                        <Lock className="h-5 w-5" />
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex-grow">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-bold text-xs text-on-surface">Assigning Microsoft 365 License</h4>
-                        <p className="text-[11px] text-on-surface-variant font-body">SKU License Allocation: {selectedSkuIds.length > 0 ? selectedSkuIds.join(", ") : "E3 Premium (Auto-Assigned)"}</p>
-                      </div>
-                      <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 tracking-wider ${getStageStyle(step3State).badge}`}>
-                        {getStageStyle(step3State).badgeLabel}
-                      </span>
-                    </div>
-
-                    {step3State === 'RUNNING' && (
-                      <div className="w-full bg-slate-200 h-1.5 rounded-full mt-3 overflow-hidden">
-                        <div className="bg-primary h-full transition-all duration-300 ease-out" style={{ width: `${step3ValuePercent}%` }} />
-                      </div>
-                    )}
-
-                    {step3State === 'RUNNING' && (
-                      <div className="mt-3 space-y-1.5 pl-3 border-l-2 border-primary/20 font-body">
-                        <div className="flex items-center gap-2 text-[11px] text-slate-700">
-                          <span className={`h-1.5 w-1.5 rounded-full ${step3Sub[1] === 'SUCCESS' ? 'bg-secondary' : 'bg-primary animate-pulse'}`} />
-                          <span>Waiting for Azure AD Connect / Entra Cloud Sync (2m delayed scheduler retries)</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-700">
-                          <span className={`h-1.5 w-1.5 rounded-full ${step3Sub[2] === 'SUCCESS' ? 'bg-secondary' : step3Sub[1] === 'SUCCESS' ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
-                          <span>Assigning Microsoft 365 licenses via Graph API (Location set + 5s replication delay)</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Stage 4: Sending Welcome Notification */}
-                <div className={`flex gap-4 p-4 rounded-xl border relative z-10 transition-all duration-300 ${getStageStyle(step4State).card}`}>
-                  <div className="shrink-0">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-300 ${getStageStyle(step4State).icon}`}>
-                      {step4State === 'RUNNING' ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : step4State === 'SUCCESS' ? (
-                        <Mail className="h-5 w-5 font-bold" />
-                      ) : (
-                        <Mail className="h-5 w-5" />
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex-grow">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-bold text-xs text-on-surface">Sending Welcome Notification</h4>
-                        <p className="text-[11px] text-on-surface-variant font-body">Template: Global_Onboarding_V2 ({emailTo || 'No Target'})</p>
-                      </div>
-                      <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 tracking-wider ${getStageStyle(step4State).badge}`}>
-                        {getStageStyle(step4State).badgeLabel}
-                      </span>
-                    </div>
-
-                    {step4State === 'RUNNING' && (
-                      <div className="w-full bg-slate-200 h-1.5 rounded-full mt-3 overflow-hidden">
-                        <div className="bg-primary h-full transition-all duration-300 ease-out" style={{ width: `${step4ValuePercent}%` }} />
-                      </div>
-                    )}
-
-                    {step4State === 'RUNNING' && (
-                      <div className="mt-3 space-y-1.5 pl-3 border-l-2 border-primary/20 font-body">
-                        <div className="flex items-center gap-2 text-[11px] text-slate-700">
-                          <span className={`h-1.5 w-1.5 rounded-full ${step4Sub[1] === 'SUCCESS' ? 'bg-secondary' : 'bg-primary animate-pulse'}`} />
-                          <span>Generating email template elements and keys</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-700">
-                          <span className={`h-1.5 w-1.5 rounded-full ${step4Sub[2] === 'SUCCESS' ? 'bg-secondary' : step4Sub[1] === 'SUCCESS' ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
-                          <span>Authentating via internal SMTP gateway</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                  );
+                })}
 
               </div>
             </div>

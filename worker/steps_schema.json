@@ -1,0 +1,47 @@
+{
+  "_comment": "Configuration for provisioning steps. Used by frontend for dynamic rendering.",
+  "steps": [
+    {
+      "key": "ad_creation",
+      "display_name": "Active Directory Creation",
+      "description": "Create and configure AD account",
+      "icon": "UserCheck",
+      "sub_steps": [
+        { "key": "connect", "display_name": "Connecting to AD" },
+        { "key": "naming", "display_name": "Creating Account" },
+        { "key": "verify", "display_name": "Verify & Validating" }
+      ]
+    },
+    {
+      "key": "papercut_sync",
+      "display_name": "PaperCut Sync",
+      "description": "Sync user to Print Server",
+      "icon": "Printer",
+      "sub_steps": [
+        { "key": "trigger", "display_name": "Trigger Sync" },
+        { "key": "sync", "display_name": "Verify Sync" }
+      ]
+    },
+    {
+      "key": "m365_license",
+      "display_name": "Microsoft 365",
+      "description": "Assign M365 licenses",
+      "icon": "Cloud",
+      "sub_steps": [
+        { "key": "check", "display_name": "Check Azure AD" },
+        { "key": "usageLocation", "display_name": "Set Location" },
+        { "key": "assign", "display_name": "Assign License" }
+      ]
+    },
+    {
+      "key": "send_email",
+      "display_name": "Welcome Email",
+      "description": "Send welcome email to manager",
+      "icon": "Mail",
+      "sub_steps": [
+        { "key": "send", "display_name": "Sending Email" },
+        { "key": "complete", "display_name": "Completed" }
+      ]
+    }
+  ]
+}

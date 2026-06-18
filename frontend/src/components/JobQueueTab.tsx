@@ -41,6 +41,28 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
   const [expandedJobs, setExpandedJobs] = useState<Record<string, boolean>>({});
   const [jobLogsCache, setJobLogsCache] = useState<Record<string, JobLog[]>>({});
   const [loadingLogs, setLoadingLogs] = useState<Record<string, boolean>>({});
+  const [stepsSchema, setStepsSchema] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchStepsSchema = async () => {
+      try {
+        const res = await fetch('/api/v1/jobs/steps');
+        if (res.ok) {
+          const data = await res.json();
+          setStepsSchema(data.steps || []);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchStepsSchema();
+  }, []);
+
+  const LucideIcons: any = require('lucide-react');
+  const getIconComponent = (iconName: string) => {
+    const Icon = LucideIcons[iconName] || LucideIcons.HelpCircle;
+    return <Icon className="h-3.5 w-3.5" />;
+  };
 
   // Trigger metrics
   const activeJobs = jobs.filter((j) => j.status === 'processing' || j.status === 'running');
@@ -99,20 +121,18 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
   };
 
   // Build grid pipeline steps state representations
-  const getStepStateStyle = (job: Job, stepId: 'ad_creation' | 'papercut_sync' | 'm365_license' | 'send_email') => {
+  const getStepStateStyle = (job: Job, stepId: string) => {
     const status = job.status.toLowerCase();
     const current = job.current_step;
     const workflow = job.payload?.workflow_control || {};
 
     let isEnabled = true;
-    if (stepId === 'ad_creation' && workflow.enable_ad_creation === false) isEnabled = false;
-    if (stepId === 'papercut_sync' && workflow.enable_papercut_sync === false) isEnabled = false;
-    if (stepId === 'm365_license' && workflow.enable_microsoft_365_license === false) isEnabled = false;
-    if (stepId === 'send_email' && workflow.enable_send_email === false) isEnabled = false;
+    const stepDef = stepsSchema.find(s => s.key === stepId);
+    if (stepDef && workflow[stepDef.enable_key] === false) {
+      isEnabled = false;
+    }
 
-    const stepsOrder: Array<'ad_creation' | 'papercut_sync' | 'm365_license' | 'send_email'> = [
-      'ad_creation', 'papercut_sync', 'm365_license', 'send_email'
-    ];
+    const stepsOrder = stepsSchema.map(s => s.key);
     const targetIdx = stepsOrder.indexOf(stepId);
     const currentIdx = stepsOrder.indexOf(current as any);
 
@@ -245,10 +265,7 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
               const isHPriority = job.payload?.workflow_control?.high_priority;
               const hasExpanded = expandedJobs[job.id];
 
-              const ad = getStepStateStyle(job, 'ad_creation');
-              const pc = getStepStateStyle(job, 'papercut_sync');
-              const lic = getStepStateStyle(job, 'm365_license');
-              const email = getStepStateStyle(job, 'send_email');
+              
 
               return (
                 <div 
@@ -281,43 +298,22 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
                     {/* Step-by-Step progress lines */}
                     <div className="flex-grow pt-1">
                       <p className="text-[10px] font-bold text-outline uppercase tracking-wider mb-2 leading-none">Pipeline Status</p>
-                      <div className="flex items-center gap-1.5">
-                        
-                        {/* Step 1 */}
-                        <div className="flex flex-col items-center gap-1 min-w-[72px]">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${ad.color}`} title={ad.label}>
-                            {ad.icon}
-                          </div>
-                          <span className="text-[9px] font-semibold text-slate-500 whitespace-nowrap text-center">AD Account</span>
-                        </div>
-                        <div className={`h-[2px] ${getLineClass(ad.state)} flex-grow mb-4`} />
-
-                        {/* Step 2 */}
-                        <div className="flex flex-col items-center gap-1 min-w-[72px]">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${pc.color}`} title={pc.label}>
-                            {pc.icon}
-                          </div>
-                          <span className="text-[9px] font-semibold text-slate-500 whitespace-nowrap text-center">Papercut Sync</span>
-                        </div>
-                        <div className={`h-[2px] ${getLineClass(pc.state)} flex-grow mb-4`} />
-
-                        {/* Step 3 */}
-                        <div className="flex flex-col items-center gap-1 min-w-[72px]">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${lic.color}`} title={lic.label}>
-                            {lic.icon}
-                          </div>
-                          <span className="text-[9px] font-semibold text-slate-500 whitespace-nowrap text-center">M365 License</span>
-                        </div>
-                        <div className={`h-[2px] ${getLineClass(lic.state)} flex-grow mb-4`} />
-
-                        {/* Step 4 */}
-                        <div className="flex flex-col items-center gap-1 min-w-[72px]">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${email.color}`} title={email.label}>
-                            {email.icon}
-                          </div>
-                          <span className="text-[9px] font-semibold text-slate-500 whitespace-nowrap text-center font-body">Welcome Email</span>
-                        </div>
-
+                      <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-2">
+                        {stepsSchema.map((step, idx) => {
+                          const stateStyle = getStepStateStyle(job, step.key);
+                          const isLast = idx === stepsSchema.length - 1;
+                          return (
+                            <React.Fragment key={step.key}>
+                              <div className="flex flex-col items-center gap-1 min-w-[72px]">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center border shrink-0 ${stateStyle.color}`} title={stateStyle.label}>
+                                  {stateStyle.state === 'queued' || stateStyle.state === 'skipped' ? getIconComponent(step.icon) : stateStyle.icon}
+                                </div>
+                                <span className="text-[9px] font-semibold text-slate-500 whitespace-nowrap text-center">{step.name}</span>
+                              </div>
+                              {!isLast && <div className={`h-[2px] ${getLineClass(stateStyle.state)} w-6 lg:flex-grow mb-4 shrink-0`} />}
+                            </React.Fragment>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -375,45 +371,36 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 font-mono text-[11px]">
                           {/* We segment logs by steps */}
-                          {['ad_creation', 'papercut_sync', 'm365_license', 'send_email'].map((stepName) => {
-                            const stepTitle = stepName === 'ad_creation' ? 'Active Directory' : stepName === 'papercut_sync' ? 'Papercut Mappings' : stepName === 'm365_license' ? 'M365 Licensing' : 'Outlook dispatch';
+                          {stepsSchema.map((stepDef) => {
+                            const stepName = stepDef.key;
+                            const stepTitle = stepDef.name;
                             const stepLogs = (jobLogsCache[job.id] || []).filter((l) => l.step === stepName || (stepName === 'ad_creation' && l.step === 'pipeline'));
 
-                            // Check sub-sequences for m365_license
-                            let subStep1 = 'STANDBY';
-                            let subStep2 = 'STANDBY';
-                            if (stepName === 'm365_license') {
-                              const hasEnqueued = stepLogs.some(l => l.message.includes("Enqueuing") || l.message.includes("Checking if user") || l.message.includes("not yet synced") || l.message.includes("Rescheduling check"));
-                              const hasAssigning = stepLogs.some(l => l.message.includes("found in Azure AD") || l.message.includes("Setting usageLocation") || l.message.includes("Waiting 5 seconds for replication") || l.message.includes("Assigning M365 licenses"));
-                              const hasSuccess = stepLogs.some(l => l.message.includes("Successfully") || l.status === 'success');
-                              
-                              if (hasEnqueued) subStep1 = 'RUNNING';
-                              if (hasAssigning) {
-                                subStep1 = 'SUCCESS';
-                                subStep2 = 'RUNNING';
-                              }
-                              if (hasSuccess) {
-                                subStep1 = 'SUCCESS';
-                                subStep2 = 'SUCCESS';
-                              }
-                            }
+                            const subStates: Record<string, string> = {};
+                            stepLogs.forEach(log => {
+                               if (log.metadata && log.metadata.sub_step) {
+                                  subStates[log.metadata.sub_step] = log.metadata.sub_step_status.toUpperCase();
+                               }
+                            });
 
                             return (
                               <div key={stepName} className="space-y-4">
                                 <h4 className="font-bold text-xs text-primary uppercase border-b pb-1.5 mb-2 flex items-center gap-1.5">
-                                  <Database className="h-3.5 w-3.5 shrink-0" /> {stepTitle}
+                                  {getIconComponent(stepDef.icon)} {stepTitle}
                                 </h4>
                                 
-                                {stepName === 'm365_license' && (
+                                {stepDef.sub_steps && stepDef.sub_steps.length > 0 && (
                                   <div className="mb-3 p-2.5 bg-white rounded-lg border border-outline-variant space-y-2 font-sans text-[10px]">
-                                    <div className="flex items-center gap-2 text-slate-700">
-                                      <span className={`h-2 w-2 rounded-full ${subStep1 === 'SUCCESS' ? 'bg-secondary' : subStep1 === 'RUNNING' ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
-                                      <span className={subStep1 === 'SUCCESS' ? 'line-through text-slate-400 font-medium' : 'font-semibold'}>Waiting for Azure AD Connect / Entra Cloud Sync (2m delayed scheduler retries)</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-slate-700">
-                                      <span className={`h-2 w-2 rounded-full ${subStep2 === 'SUCCESS' ? 'bg-secondary' : subStep2 === 'RUNNING' ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
-                                      <span className={subStep2 === 'SUCCESS' ? 'line-through text-slate-400 font-medium' : 'font-semibold'}>Assigning Microsoft 365 licenses via Graph API (Location set + 5s replication delay)</span>
-                                    </div>
+                                    {stepDef.sub_steps.map((sub: any) => {
+                                       const sState = subStates[sub.key] || 'STANDBY';
+                                       const dotClass = sState === 'SUCCESS' ? 'bg-secondary' : sState === 'RUNNING' ? 'bg-primary animate-pulse' : 'bg-slate-300';
+                                       return (
+                                          <div key={sub.key} className="flex items-center gap-2 text-slate-700">
+                                            <span className={`h-2 w-2 rounded-full ${dotClass}`} />
+                                            <span className={sState === 'SUCCESS' ? 'line-through text-slate-400 font-medium' : 'font-semibold'}>{sub.name}</span>
+                                          </div>
+                                       );
+                                    })}
                                   </div>
                                 )}
 

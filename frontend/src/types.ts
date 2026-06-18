@@ -51,16 +51,17 @@ export interface M365Sku {
 export interface JobLog {
   id: string;
   jobId: string;
-  step: 'ad_creation' | 'papercut_sync' | 'm365_license' | 'send_email' | 'pipeline';
-  status: 'running' | 'success' | 'failed' | 'skipped' | 'paused';
+  step: string;
+  status: 'running' | 'success' | 'failed' | 'skipped' | 'paused' | 'pending';
   message: string;
+  metadata?: Record<string, any>;
   timestamp: string; // ISO string
 }
 
 export interface Job {
   id: string;
   status: 'queued' | 'processing' | 'success' | 'failed' | 'paused' | 'cancelled';
-  current_step: 'ad_creation' | 'papercut_sync' | 'm365_license' | 'send_email' | 'done';
+  current_step: string;
   created_at: string; // ISO string
   updated_at: string; // ISO string
   payload: {

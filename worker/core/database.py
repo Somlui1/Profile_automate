@@ -41,6 +41,7 @@ def init_db():
             step TEXT NOT NULL,
             status TEXT NOT NULL,
             message TEXT,
+            metadata TEXT,
             timestamp DATETIME,
             FOREIGN KEY (job_id) REFERENCES jobs (id) ON DELETE CASCADE
         )
@@ -98,14 +99,14 @@ def update_job(job_id: str, status: str = None, current_step: str = None, result
     conn.commit()
     conn.close()
 
-def add_log(job_id: str, step: str, status: str, message: str = ""):
+def add_log(job_id: str, step: str, status: str, message: str = "", metadata: Dict[str, Any] = None):
     now = datetime.datetime.now().astimezone().isoformat()
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO job_logs (job_id, step, status, message, timestamp)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (job_id, step, status, message, now))
+        INSERT INTO job_logs (job_id, step, status, message, metadata, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (job_id, step, status, message, json.dumps(metadata) if metadata else None, now))
     
     # Also update the job's updated_at timestamp to trigger SSE
     cursor.execute('UPDATE jobs SET updated_at = ? WHERE id = ?', (now, job_id))
@@ -133,7 +134,13 @@ def get_logs(job_id: str) -> List[Dict[str, Any]]:
     cursor.execute('SELECT * FROM job_logs WHERE job_id = ? ORDER BY id ASC', (job_id,))
     rows = cursor.fetchall()
     conn.close()
-    return [dict(row) for row in rows]
+    
+    logs = []
+    for row in rows:
+        log = dict(row)
+        if log.get('metadata'): log['metadata'] = json.loads(log['metadata'])
+        logs.append(log)
+    return logs
 
 def list_jobs(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
     conn = get_db_connection()
