@@ -51,7 +51,7 @@ def init_db():
 
 def create_job(payload: Dict[str, Any], created_by: str = "admin") -> str:
     job_id = str(uuid.uuid4())
-    now = datetime.datetime.utcnow().isoformat()
+    now = datetime.datetime.now().astimezone().isoformat()
     
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -65,7 +65,7 @@ def create_job(payload: Dict[str, Any], created_by: str = "admin") -> str:
     return job_id
 
 def update_job(job_id: str, status: str = None, current_step: str = None, result: Dict[str, Any] = None, error: str = None, username: str = None):
-    now = datetime.datetime.utcnow().isoformat()
+    now = datetime.datetime.now().astimezone().isoformat()
     updates = []
     params = []
     
@@ -99,7 +99,7 @@ def update_job(job_id: str, status: str = None, current_step: str = None, result
     conn.close()
 
 def add_log(job_id: str, step: str, status: str, message: str = ""):
-    now = datetime.datetime.utcnow().isoformat()
+    now = datetime.datetime.now().astimezone().isoformat()
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
@@ -151,7 +151,7 @@ def list_jobs(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
     return jobs
 
 def cleanup_old_jobs(days: int = 30):
-    cutoff = (datetime.datetime.utcnow() - datetime.timedelta(days=days)).isoformat()
+    cutoff = (datetime.datetime.now().astimezone() - datetime.timedelta(days=days)).isoformat()
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('DELETE FROM jobs WHERE created_at < ?', (cutoff,))
