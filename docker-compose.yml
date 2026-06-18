@@ -1,6 +1,8 @@
 services:
   redis:
     image: redis:7-alpine
+    environment:
+      - TZ=Asia/Bangkok
     # Exposing Redis port to host is useful for local development and debugging.
     # For production, consider commenting out this ports block so Redis is only accessible
     # internally within the Docker bridge network.
@@ -21,6 +23,7 @@ services:
       - "8000:8000"
     env_file: ./.env
     environment:
+      - TZ=Asia/Bangkok
       - DB_PATH=/app/data/jobs.db
       - REDIS_URL=redis://redis:6379/0
       - DEBUG_MODE=false
@@ -38,6 +41,7 @@ services:
     build: ./worker
     env_file: ./.env
     environment:
+      - TZ=Asia/Bangkok
       - DB_PATH=/app/data/jobs.db
       - REDIS_URL=redis://redis:6379/0
       - DEBUG_MODE=false
@@ -49,6 +53,8 @@ services:
 
   redis-insight:
     image: redis/redisinsight:latest
+    environment:
+      - TZ=Asia/Bangkok
     ports:
       - "5540:5540"
     depends_on:
