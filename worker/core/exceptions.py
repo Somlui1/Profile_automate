@@ -22,3 +22,11 @@ class ActiveDirectoryError(ApplicationError):
 class PapercutAPIError(ApplicationError):
     """Raised when operations against the Papercut API fail."""
     pass
+
+class PreflightError(ApplicationError):
+    """Raised when preflight health check fails."""
+    pass
+
+class M365UserNotSyncedError(ApplicationError):
+    """Raised when user has not been synced to Azure AD yet."""
+    pass

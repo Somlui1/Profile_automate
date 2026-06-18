@@ -91,6 +91,11 @@ def _run_step(step_id: str, job_id: str, payload: dict, execute_fn):
         execute_fn(job_id, payload)
         move_to_next_step(job_id, payload, current_step=step_id)
     except Exception as e:
+        from core.exceptions import M365UserNotSyncedError
+        if getattr(e, '__class__', None) and e.__class__.__name__ == 'M365UserNotSyncedError' or isinstance(e, M365UserNotSyncedError):
+            logger.info(f"[{job_id}] Task {step_id} re-enqueued: {e}")
+            return
+
         logger.error(f"{step_id} task failed: {e}")
         add_log(job_id, step_id, "failed", f"Error: {str(e)}")
         update_job(job_id, status="failed", error=str(e))
@@ -117,9 +122,9 @@ def normalize_payload(payload: dict) -> dict:
     licenses = custom_attrs.get("licenses")
     if licenses is None:
         if req_info.get("department", "").lower().find("engineering") != -1:
-            licenses = ["sku-ems", "sku-standardpack"]
+            licenses = [{"skuPartNumber": "EMS"}, {"skuPartNumber": "STANDARDPACK"}]
         else:
-            licenses = ["sku-standardpack"]
+            licenses = [{"skuPartNumber": "STANDARDPACK"}]
 
     normalized_custom_attrs = {
         "first_name": custom_attrs.get("first_name") or (req_info.get("name_english", "").split()[0] if req_info.get("name_english") else ""),
@@ -177,6 +182,26 @@ def run_sync_pipeline(job_id: str, payload: dict):
     add_log(job_id, "pipeline", "running", "Initiating provisioning pipeline")
     
     workflow = payload.get("workflow_control", {})
+    
+    # ===== NEW: Preflight Health Check =====
+    from services.health_check import health_checker
+    add_log(job_id, "preflight", "running", "Running service health checks...")
+    
+    passed, results = health_checker.run_preflight(workflow)
+    
+    for r in results:
+        status = "success" if r["passed"] else "failed"
+        add_log(job_id, "preflight", status, f"{r['service']}: {r['message']}")
+    
+    if not passed:
+        failed_services = [r['service'] for r in results if not r['passed']]
+        error_msg = f"Preflight failed: {', '.join(failed_services)} not reachable"
+        update_job(job_id, status="cancelled", error=error_msg)
+        add_log(job_id, "preflight", "failed", error_msg)
+        return  # ❌ Cancel job — do not start pipeline
+    
+    add_log(job_id, "preflight", "success", "All services are ready")
+    # ===== END Preflight =====
     
     # Find and enqueue the first enabled step
     for step in PIPELINE_STEPS:
@@ -319,6 +344,31 @@ def _execute_m365_license(job_id: str, payload: dict):
     m365_licenses = payload.get("task_data", {}).get("microsoft_365_licenses", {})
     sku_ids = m365_licenses.get("SkuId_id", [])
     
+    upn = ad_profile.get("custom_attributes", {}).get("user_principal_name") or f"{username}@aapico.com"
+    
+    retry_count = payload.get("_m365_retry_count", 0)
+    MAX_RETRIES = 6
+    
+    add_log(job_id, "m365_license", "running", f"Checking if user {upn} exists in Azure AD (attempt {retry_count + 1}/{MAX_RETRIES + 1})")
+    
+    if not m365_service.check_user_exists(upn):
+        if retry_count >= MAX_RETRIES:
+            raise Exception(f"User {upn} not found in Azure AD after {MAX_RETRIES + 1} attempts (~30 min). Please check Azure AD Connect sync status.")
+            
+        delay = timedelta(seconds=60 * (2 ** retry_count))
+        payload["_m365_retry_count"] = retry_count + 1
+        
+        msg = f"User {upn} not yet synced to Azure AD. Retrying in {delay}..."
+        add_log(job_id, "m365_license", "running", msg)
+        sync_queue.enqueue_in(delay, "tasks.sync_user.run_m365_license_task", job_id, payload)
+        
+        from core.exceptions import M365UserNotSyncedError
+        raise M365UserNotSyncedError(msg)
+    
+    add_log(job_id, "m365_license", "running", f"User {upn} found in Azure AD. Resolving SKUs and assigning licenses...")
+    
+    sku_ids = m365_service.resolve_sku_ids(sku_ids) if sku_ids else []
+    
     # Format licenses for display in logs
     log_skus = []
     for sku in sku_ids:
@@ -328,7 +378,6 @@ def _execute_m365_license(job_id: str, payload: dict):
             log_skus.append(str(sku))
     
     # Assign licenses using Microsoft Graph Service
-    upn = ad_profile.get("custom_attributes", {}).get("user_principal_name") or f"{username}@aapico.com"
     m365_service.assign_licenses(upn, sku_ids)
     add_log(job_id, "m365_license", "success", f"Successfully assigned {len(sku_ids)} M365 licenses to user {username}")
 

@@ -10,9 +10,10 @@ The provisioning pipeline consists of **4 core steps** executed in order:
 
 | Step Number | Step Key | Display Name | Sub-steps / Sub-sequences |
 |--- |--- |--- |--- |
+| **Step 0** | `preflight` | Preflight Health Check | 1. Verify AD Connection<br>2. Verify M365 Graph API Token<br>3. Verify PaperCut XML-RPC API<br>4. Verify Redis Connection |
 | **Step 1** | `ad_creation` | Active Directory Creation | 1. Check if user exists<br>2. Create AD account (Disabled)<br>3. Validate AD properties |
 | **Step 2** | `papercut_sync` | PaperCut Synchronization | 1. Force global User/Group Sync<br>2. Wait 2 seconds<br>3. Set Printer Card/PIN code<br>4. Set initial print balance (100 credits) |
-| **Step 3** | `m365_license` | Microsoft 365 Licensing | 1. Wait for Azure AD Connect Sync (5m delay)<br>2. Assign M365 licenses via Graph API |
+| **Step 3** | `m365_license` | Microsoft 365 Licensing | 1. Wait for Azure AD Connect Sync (5m delay)<br>2. Check user existence and exponential retry<br>3. Resolve SKU GUIDs<br>4. Assign M365 licenses via Graph API |
 | **Step 4** | `send_email` | Onboarding welcome email | 1. Connect to SMTP relay server<br>2. Dispatch email to supervisor & IT Support |
 
 ---
@@ -23,9 +24,10 @@ To provide a premium and responsive user experience, the frontend must dynamical
 
 ### 2.1 Step 3 Progress & Sub-step States (M365 Licensing)
 
-For **Step 3 (`m365_license`)**, the UI renders two sub-steps:
-1. **Waiting for Azure AD Connect / Entra Cloud Sync (5m delay)**
-2. **Assigning Microsoft 365 licenses via Graph API**
+For **Step 3 (`m365_license`)**, the UI renders sub-steps to handle the sync delay and retry mechanisms:
+1. **Waiting for Azure AD Connect / Entra Cloud Sync (initial 5m delay + exponential retries)**
+2. **Checking user existence via Graph API**
+3. **Assigning Microsoft 365 licenses via Graph API**
 
 #### Progress State & Indicators
 * **STANDBY** (Queue hasn't reached this step yet):
@@ -89,11 +91,16 @@ To ensure the frontend correctly parses sub-step status, the worker MUST write l
    ```python
    add_log(job_id, "m365_license", "running", "Enqueuing Microsoft 365 License task (delayed 5m)")
    ```
-2. **When starting the license assignment task:**
+2. **When checking user existence (or retrying):**
    ```python
-   add_log(job_id, "m365_license", "running", f"Assigning Microsoft 365 licenses: {sku_ids}")
+   add_log(job_id, "m365_license", "running", f"Checking if user {upn} exists in Azure AD (attempt {retry_count + 1}/{MAX_RETRIES + 1})")
+   add_log(job_id, "m365_license", "running", f"User {upn} not yet synced to Azure AD. Retrying in {delay}...")
    ```
-3. **When completed successfully:**
+3. **When user found and starting the license assignment task:**
+   ```python
+   add_log(job_id, "m365_license", "running", f"User {upn} found in Azure AD. Resolving SKUs and assigning licenses...")
+   ```
+4. **When completed successfully:**
    ```python
    add_log(job_id, "m365_license", "success", f"Successfully assigned {count} M365 licenses to user {username}")
    ```

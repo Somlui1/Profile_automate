@@ -16,7 +16,7 @@ profile_automate/
 │   └── main.py                # Backend application entry point
 ├── worker/                    # RQ Worker background tasks
 │   ├── core/                  # Worker configurations and SQLite database actions
-│   ├── services/              # Active Directory and PaperCut integration services
+│   ├── services/              # Active Directory, PaperCut, M365, and Health Check integration services
 │   ├── tasks/                 # Decoupled pipeline steps (ad_creation, papercut_sync, etc.)
 │   └── run.py                 # Worker process entry point
 ├── frontend/                  # React + Vite + TypeScript web application
@@ -37,6 +37,6 @@ profile_automate/
 ## Key Component Descriptions
 
 1. **FastAPI (`api/`)**: Serves the user interface and exposes endpoints to submit provisioning requests, get job status, and stream updates in real-time via Server-Sent Events (SSE).
-2. **RQ Worker (`worker/`)**: Runs background processes pulled from the Redis queue. Executes sequential automation pipelines (Active Directory user creation -> PaperCut synchronization -> Microsoft 365 license assignment -> Email notification).
+2. **RQ Worker (`worker/`)**: Runs background processes pulled from the Redis queue. Executes sequential automation pipelines (Preflight health check before every pipeline -> Active Directory user creation -> PaperCut synchronization -> Microsoft 365 license assignment with user existence pre-check and retry -> Email notification).
 3. **Frontend (`frontend/`)**: React web app dashboard to monitor active/queued jobs, inspect progress logs, and trigger manual steps if needed.
 4. **Mock Scripts (`temp/`)**: Quick helper tools to test logic safely in offline/dry-run mode or verify connection issues with active components (LDAP, PaperCut RPC API).

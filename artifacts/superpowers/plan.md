@@ -1,88 +1,215 @@
-# Implementation Plan: Production-Ready Docker Compose and Dependency Setup
+# Plan: Graph API Pre-check + Preflight Health Check + M365 License Reliability
 
 ## Goal
-Optimize `docker-compose.yml` and project dependencies (FastAPI, Redis, RQ) to be production-ready under **Option B (Advanced Hardening & Volume Isolation)**, ensuring security, automatic recovery, and eliminating permission conflicts on Linux production hosts.
+
+เพิ่ม **Graph API Pre-check** (Option 2 จาก brainstorm) เข้าสู่ M365 license step — เรียก `GET /users/{upn}` ก่อน assign เพื่อยืนยันว่า user sync ขึ้น Azure AD แล้ว ถ้ายังไม่มี → re-enqueue ด้วย exponential backoff  
+เพิ่ม **Preflight Health Check** ตรวจ AD/M365/PaperCut connectivity ก่อนเริ่ม pipeline — cancel job ทันทีหาก service ไม่พร้อม  
+แก้ **SKU format bug** ที่ส่ง string แทน dict ไป Graph API
 
 ## Assumptions
-- The local Python environment (.venv) represents the stable package baseline:
-  - `redis==8.0.0`
-  - `rq==2.9.0`
-  - `sse-starlette==3.0.3`
-  - `rq-dashboard==0.8.7`
-  - `fastapi==0.110.0`
-  - `uvicorn==0.28.0`
-  - `python-multipart==0.0.9`
-  - `pypdf==6.6.0`
-  - `python-dotenv==1.2.1`
-  - `ldap3==2.9.1`
-  - `requests==2.32.5`
-- The system will be run via `docker compose` in both development (using profiles/local settings) and production environments.
-- The Redis connection format `redis://[:password]@host:port/db` is natively supported by `redis.Redis.from_url`.
+
+1. Credential (Client ID/Secret) สำหรับ MS Graph ถูกต้อง — ปัญหาอยู่ที่ timing ไม่ใช่ auth
+2. Azure AD Connect sync interval ~5 นาที แต่ไม่ deterministic
+3. `M365_DELAY_SECONDS=300` (initial delay) คงเดิม — retry หลังจากนั้น
+4. Mock mode ต้องทำงานได้ตามปกติ (health check pass เสมอใน mock)
+5. ไม่เปลี่ยนโครงสร้าง pipeline (`_run_step`, `move_to_next_step`) — เพิ่ม logic เข้าไปเฉพาะจุดที่จำเป็น
+6. Max retry สำหรับ M365 = 6 ครั้ง (~30 นาที max wait หลัง initial 5m delay)
+
+---
 
 ## Plan
 
-### Step 1: Pin Python Dependencies in Requirements Files
-- **Files**:
-  - [requirements.txt](file:///c:/Users/wajeepradit.p/git/profile_automate/requirements.txt)
-  - [api/requirements.txt](file:///c:/Users/wajeepradit.p/git/profile_automate/api/requirements.txt)
-  - [worker/requirements.txt](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/requirements.txt)
-- **Change**: Replace loose `>=` dependency definitions with strict `==` pinning to match the stable development versions.
-- **Verify**: Inspect the files and ensure all packages are pinned to exact versions.
+### Step 1: เพิ่ม Custom Exceptions (2 นาที)
 
-### Step 2: Implement Security and Volume Changes in Docker Compose
-- **Files**:
-  - [docker-compose.yml](file:///c:/Users/wajeepradit.p/git/profile_automate/docker-compose.yml)
-- **Change**:
-  - Remove/comment out the `ports` mapping for the `redis` service (so it's only accessible via internal bridge network in production).
-  - Add `command: redis-server --requirepass ${REDIS_PASSWORD:-somestrongpassword}` to `redis`.
-  - Add `restart: unless-stopped` to `redis`, `api`, and `worker` services.
-  - Define a named Docker volume `sqlite_data` in the top-level `volumes` block.
-  - Change `volumes` in `api` and `worker` from host path `./data:/app/data` to named volume `sqlite_data:/app/data`.
-  - Pass `REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0` to the environment block of `api` and `worker` to support the Redis password.
-- **Verify**: Run `docker compose config` in terminal to verify that the compose file parses correctly.
+**Files:** `worker/core/exceptions.py`
 
-### Step 3: Update Environment Template files
-- **Files**:
-  - [.env.example](file:///c:/Users/wajeepradit.p/git/profile_automate/.env.example)
-  - `.env` (local file if exists)
-- **Change**: Add `REDIS_PASSWORD` as a configurable variable, and update the default `REDIS_URL` string to include the password placeholder.
-- **Verify**: Check `.env.example` to ensure it documents the new Redis security configurations.
+**Change:** เพิ่ม 2 exception classes ใหม่:
+- `PreflightError` — ใช้เมื่อ health check ล้มเหลว
+- `M365UserNotSyncedError` — ใช้เมื่อ user ยังไม่ sync ขึ้น Azure AD
 
-### Step 4: Harden Dockerfiles with Non-Root Users
-- **Files**:
-  - [api/Dockerfile](file:///c:/Users/wajeepradit.p/git/profile_automate/api/Dockerfile)
-  - [worker/Dockerfile](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/Dockerfile)
-- **Change**:
-  - Add a non-root system user (`appuser` with UID `10001`) in both Dockerfiles, change ownership of the `/app` directory, and switch execution to `appuser`.
-- **Verify**: Run `docker compose build` to verify the images build correctly under the non-root configuration.
-
-### Step 5: End-to-End Validation
-- **Files**: None
-- **Change**: Spin up the entire containerized application locally and test a job run.
-- **Verify**:
-  - Run `docker compose up --build -d` to start all services.
-  - Run `docker compose logs api` and `docker compose logs worker` to verify successful connection to Redis and SQLite initialization without permission errors.
-  - Run the test sync job script: `python enqueue_job.py` or trigger a sync job from the local browser client and confirm it gets successfully queued, executed, and saved in SQLite.
+**Verify:**
+```powershell
+cd c:\Users\wajeepradit.p\git\profile_automate\worker
+python -c "from core.exceptions import PreflightError, M365UserNotSyncedError; print('OK')"
+```
 
 ---
 
-## Risks & mitigations
+### Step 2: เพิ่ม `check_user_exists()` และ `resolve_sku_ids()` ใน m365_service (5 นาที)
 
-| Risk | Mitigation |
-|------|------------|
-| Named volumes make it harder to access SQLite `jobs.db` from host system during local debug | The `redis-insight` service or a simple debug CLI command can be used. We can also mount the data directory back to the host via dev-specific override file if needed, but named volume is highly recommended for production staging. |
-| Redis password contains special characters | Always wrap the `REDIS_PASSWORD` value in quotes inside `.env` to prevent shell parsing errors. |
-| Root permissions required by some base container utilities | `appuser` is created as a system user with UID 10001, which has sufficient privileges for python execution and package operations in `/app`, and avoids running code as root. |
+**Files:** `worker/services/m365_service.py`
+
+**Change:**
+1. เพิ่ม method `check_user_exists(upn)` — เรียก `GET /v1.0/users/{upn}` ผ่าน Graph API
+   - return `True` ถ้า status 200
+   - return `False` ถ้า HTTP 404 (user ไม่มี)
+   - raise Exception ถ้า error อื่น (เช่น 401, 500)
+   - Mock mode: return `True` เสมอ
+2. เพิ่ม method `resolve_sku_ids(sku_names)` — เรียก `GET /v1.0/subscribedSkus` แล้ว map `skuPartNumber` → `skuId`
+   - Input: `["STANDARDPACK", "EMS"]` (strings)
+   - Output: `[{"skuId": "guid-...", "skuPartNumber": "STANDARDPACK"}, ...]`
+   - Mock mode: return input แปลงเป็น dict format พร้อม mock GUID
+
+**Verify:**
+```powershell
+cd c:\Users\wajeepradit.p\git\profile_automate\worker
+python -c "from services.m365_service import m365_service; print(m365_service.check_user_exists('test@aapico.com'))"
+python -c "from services.m365_service import m365_service; print(m365_service.resolve_sku_ids(['STANDARDPACK']))"
+```
 
 ---
 
-## Rollback plan
-- To revert the changes, run:
-  ```bash
-  git checkout -- requirements.txt api/requirements.txt worker/requirements.txt docker-compose.yml api/Dockerfile worker/Dockerfile
-  ```
-- Any newly created docker volumes can be cleaned up using:
-  ```bash
-  docker compose down -v
-  ```
+### Step 3: สร้าง Health Check Service (5 นาที)
 
+**Files:** `worker/services/health_check.py` (NEW)
+
+**Change:** สร้าง class `ServiceHealthChecker` พร้อม methods:
+- `check_ad()` → `(bool, str)`: ลอง `ad_service._get_connection()` แล้ว unbind ทันที
+- `check_m365()` → `(bool, str)`: ลอง `m365_service._get_access_token()`
+- `check_papercut()` → `(bool, str)`: ลอง `papercut_service._server.api.getTotalUsers(auth_token)`
+- `run_preflight(workflow_control)` → `(bool, list)`: ตรวจเฉพาะ service ที่ enabled
+  - AD → check เสมอ (เป็น core dependency)
+  - PaperCut → check ถ้า `enable_papercut_sync=True`
+  - M365 → check ถ้า `enable_microsoft_365_license=True`
+  - Mock mode: ทุก check return `(True, "Mock mode — skipped")`
+
+**Verify:**
+```powershell
+cd c:\Users\wajeepradit.p\git\profile_automate\worker
+python -c "from services.health_check import health_checker; ok, results = health_checker.run_preflight({}); print(ok, results)"
+```
+
+---
+
+### Step 4: เพิ่ม Preflight Gate ใน `run_sync_pipeline()` (5 นาที)
+
+**Files:** `worker/tasks/sync_user.py`
+
+**Change:** เพิ่มโค้ดก่อนบรรทัด `# Find and enqueue the first enabled step` ในฟังก์ชัน `run_sync_pipeline()`:
+1. Import `health_checker`
+2. เรียก `health_checker.run_preflight(workflow)`
+3. Log ผลลัพธ์แต่ละ service ด้วย `add_log(job_id, "preflight", ...)`
+4. ถ้า fail → `update_job(status="cancelled")` + return ทันที (ไม่เริ่ม pipeline)
+5. ถ้า pass → `add_log(job_id, "preflight", "success", "All services ready")` แล้วดำเนินต่อ
+
+**Verify:**
+```powershell
+cd c:\Users\wajeepradit.p\git\profile_automate\worker
+python -c "
+from core.database import init_db, get_logs, create_job
+from tasks.sync_user import run_sync_pipeline
+init_db()
+jid = create_job({})
+run_sync_pipeline(jid, {})
+logs = get_logs(jid)
+steps = [l['step'] for l in logs]
+assert 'preflight' in steps, f'preflight not found in {steps}'
+print('Preflight gate OK:', steps)
+"
+```
+
+---
+
+### Step 5: เพิ่ม M365 User Pre-check + Retry ใน `_execute_m365_license()` (8 นาที)
+
+**Files:** `worker/tasks/sync_user.py`
+
+**Change:** ปรับ `_execute_m365_license()` (L316-333) ให้:
+1. อ่าน `retry_count` จาก `payload.get("_m365_retry_count", 0)`, ตั้ง `MAX_RETRIES = 6`
+2. เรียก `m365_service.check_user_exists(upn)` ก่อน assign
+3. ถ้า user ไม่มี:
+   - ถ้า `retry_count >= MAX_RETRIES` → raise Exception พร้อมข้อความ actionable
+   - ถ้ายังไม่ถึง max → เพิ่ม `payload["_m365_retry_count"]`, คำนวณ delay `60 * 2^retry_count` วินาที, `add_log` แจ้งสถานะ, เรียก `sync_queue.enqueue_in(delay, ...)` แล้ว **raise `M365UserNotSyncedError`** เพื่อบอก `_run_step` ว่าไม่ต้อง `move_to_next_step`
+4. ถ้า user มี → ดำเนินต่อ assign license ตามปกติ
+
+ปรับ `_run_step()` (L85-96) ให้:
+- catch `M365UserNotSyncedError` แยกจาก Exception อื่น → ไม่ fail job, ไม่ move to next (เพราะ re-enqueue แล้ว)
+
+**Verify:**
+```powershell
+cd c:\Users\wajeepradit.p\git\profile_automate\worker
+python -c "
+from core.database import init_db, get_logs, create_job
+init_db()
+# ทดสอบ mock mode: check_user_exists return True → assign สำเร็จทันที
+from services.m365_service import m365_service
+print('check_user_exists (mock):', m365_service.check_user_exists('test@aapico.com'))
+print('Test OK')
+"
+```
+
+---
+
+### Step 6: แก้ SKU Format Bug ใน `normalize_payload()` (3 นาที)
+
+**Files:** `worker/tasks/sync_user.py`
+
+**Change:** ปรับ `normalize_payload()` L117-122 ที่สร้าง `licenses` list:
+- เปลี่ยนจาก: `licenses = ["sku-ems", "sku-standardpack"]`
+- เป็น: `licenses = [{"skuPartNumber": "EMS"}, {"skuPartNumber": "STANDARDPACK"}]`
+- เพิ่มใน `_execute_m365_license()`: เรียก `m365_service.resolve_sku_ids(sku_ids)` เพื่อ resolve part names เป็น GUIDs ก่อนส่ง `assign_licenses()`
+- ทำให้ `assign_licenses()` ทำงานกับทั้ง format (dict ที่มี skuId แล้ว หรือ dict ที่มีแค่ skuPartNumber)
+
+**Verify:**
+```powershell
+cd c:\Users\wajeepradit.p\git\profile_automate\worker
+python -c "
+from tasks.sync_user import normalize_payload
+p = normalize_payload({'requester_info': {'name_english': 'Mr. Test User', 'employee_id': '1234', 'department': 'Engineering', 'company': 'AAPICO'}})
+skus = p['task_data']['microsoft_365_licenses']['SkuId_id']
+print('SKU format:', skus)
+assert isinstance(skus[0], dict), f'Expected dict, got {type(skus[0])}'
+print('SKU format fix OK')
+"
+```
+
+---
+
+### Step 7: อัปเดตเอกสาร Project ทั้งหมด (5 นาที)
+
+**Files:**
+- `.agent/project_structure.md`
+- `worker/workspace.md`
+- `worker/sequence.md`
+
+**Change:**
+
+**project_structure.md:**
+- เพิ่ม `health_check.py` ในแผนผัง services directory
+- อัปเดตคำอธิบาย Worker ให้รวม "Preflight health check before every pipeline" + "M365 user existence pre-check with retry"
+
+**workspace.md:**
+- เพิ่มหัวข้อ "ขั้นตอนที่ 0: Preflight Health Check" ก่อนขั้นตอนที่ 1
+- อัปเดตขั้นตอนที่ 3 (M365) ให้รวม: pre-check user → retry loop → assign → done
+- เพิ่ม sub-step "SKU Resolution" ใน Step 3
+
+**sequence.md:**
+- เพิ่ม Step 0: Preflight ใน Pipeline Sequence Overview table
+- อัปเดต Step 3 sub-steps ให้มี 4 sub-steps: wait delay → check user exists → resolve SKUs → assign licenses
+- เพิ่ม retry count ใน log recording pattern
+
+**Verify:**
+```powershell
+Select-String -Path "c:\Users\wajeepradit.p\git\profile_automate\.agent\project_structure.md" -Pattern "health_check"
+Select-String -Path "c:\Users\wajeepradit.p\git\profile_automate\worker\workspace.md" -Pattern "Preflight"
+Select-String -Path "c:\Users\wajeepradit.p\git\profile_automate\worker\sequence.md" -Pattern "preflight"
+```
+
+---
+
+## Risks & Mitigations
+
+| Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| Graph API rate limit จาก repeated `GET /users/{upn}` | Low | Medium | Max 6 retries + exponential backoff (1m→32m) = ~7 calls ต่อ job |
+| `resolve_sku_ids()` fail เพราะ permission ไม่มี `Organization.Read.All` | Medium | High | Fallback: ถ้า API fail → ใช้ hardcoded SKU map จาก config |
+| Preflight false-positive (service ตอบช้าแต่ไม่ได้ตาย) | Low | Medium | ตั้ง timeout 5s ต่อ check, ไม่ retry ที่ preflight level |
+| `_run_step` catch logic ผิด — M365UserNotSyncedError ถูก treat เป็น failure | Medium | High | Unit test ยืนยันว่า re-enqueue ไม่ทำให้ job fail |
+| Mock mode regression (health check / pre-check ทำให้ mock mode พัง) | Low | High | ทุก method ต้อง check `self.mock_mode` ก่อน |
+
+## Rollback Plan
+
+1. **Git revert**: ทุก change อยู่ใน commit เดียว → `git revert HEAD` กลับสู่สถานะเดิม
+2. **Disable preflight**: เพิ่ม env var `SKIP_PREFLIGHT=true` เพื่อ bypass health check ในกรณีฉุกเฉิน (จะเพิ่มไว้ใน Step 4 เป็น safety valve)
+3. **Disable M365 retry**: ตั้ง `MAX_RETRIES=0` ใน config เพื่อกลับเป็น behavior เดิม (try once, fail fast)
+4. **SKU format**: เป็น backward-compatible — `assign_licenses()` ยังรับ dict ที่มี `skuId` ได้ตามเดิม
