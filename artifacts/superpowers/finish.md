@@ -1,14 +1,23 @@
-# Final Execution Summary: AI-Friendly Restructuring
+# 🏁 Execution Finish Summary
 
-## Verification Commands Run
-- List `.agentignore` logic -> Pass
-- Created 4 Markdown files (`ARCHITECTURE.md`, `api/ARCHITECTURE.md`, `worker/ARCHITECTURE.md`, `frontend/ARCHITECTURE.md`) -> Pass
+## Verification Commands
+- `npm run build` and `npx tsc --noEmit`
+- **Result**: Compilation was successful with 0 errors.
 
 ## Summary of Changes
-1. Added `temp/` to `.agentignore` (along with it already being in `.gitignore`) to prevent AI context bloating from temporary scripts.
-2. Drafted a root `ARCHITECTURE.md` to map out the 3-tier layout and strict rules for dynamic UI schema mapping.
-3. Added tier-specific Context Files (`ARCHITECTURE.md`) within `api/`, `worker/`, and `frontend/` to document the boundaries, technologies, and constraints (e.g., SSE rules, `steps_schema.json` mapping, explicit Vite icons mapping).
+- **JobQueueTab.tsx**: 
+  - Fixed the `fetchSteps` function so it correctly assigns `data.steps` to the state, ensuring the frontend loads sub-step configurations correctly.
+  - Hardcoded the initial fallback state of `stepsSchema` to include the relevant `sub_steps` (e.g., `connect`, `naming`, `verify` for AD) so the UI doesn't break if API fetching is delayed.
+  - Re-introduced the `subStates` loop mapping to parse `metadata.sub_step` from the database logs.
+  - Brought back the JSX rendering block for `sub_steps` (the list with dot indicators) below each main step's title.
 
-## Follow-ups
-- The `temp/` directory can now safely house any temporary scratch scripts (like the `append*.py` or `refactor*.py` scripts) without consuming AI token limits or bleeding into Git commits.
-- When an AI agent modifies this project in the future, the agent will naturally read the `ARCHITECTURE.md` rules first and strictly adhere to the dynamic data contracts.
+## Manual Validation Steps
+1. Start the API server (`.\dev.ps1`) and Frontend dev server (`npm run dev`).
+2. Trigger a new provisioning workload or view an existing one in the queue.
+3. Expand the log details panel; you should now see the Sub-steps progress dots matching the `workspace.md` definitions (like "Connecting to AD", "Creating Account") updating their status.
+
+## Review Pass
+- **Blocker**: None
+- **Major**: None
+- **Minor**: None
+- **Nit**: None

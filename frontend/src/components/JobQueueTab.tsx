@@ -61,10 +61,24 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
   const [jobLogsCache, setJobLogsCache] = useState<Record<string, JobLog[]>>({});
   const [loadingLogs, setLoadingLogs] = useState<Record<string, boolean>>({});
   const [stepsSchema, setStepsSchema] = useState<StepSchema[]>([
-    { key: 'ad_creation', display_name: 'AD Account', description: '', icon: 'UserPlus', sub_steps: [] },
-    { key: 'papercut_sync', display_name: 'Papercut Sync', description: '', icon: 'Printer', sub_steps: [] },
-    { key: 'm365_license', display_name: 'M365 License', description: '', icon: 'Key', sub_steps: [] },
-    { key: 'send_email', display_name: 'Welcome Email', description: '', icon: 'Mail', sub_steps: [] }
+    { key: 'ad_creation', display_name: 'AD Account', description: '', icon: 'UserPlus', sub_steps: [
+      { key: 'connect', display_name: 'Connecting to AD' },
+      { key: 'naming', display_name: 'Creating Account' },
+      { key: 'verify', display_name: 'Verify & Validating' }
+    ] },
+    { key: 'papercut_sync', display_name: 'Papercut Sync', description: '', icon: 'Printer', sub_steps: [
+      { key: 'trigger', display_name: 'Trigger Sync' },
+      { key: 'sync', display_name: 'Verify Sync' }
+    ] },
+    { key: 'm365_license', display_name: 'M365 License', description: '', icon: 'Key', sub_steps: [
+      { key: 'check', display_name: 'Check Azure AD' },
+      { key: 'usageLocation', display_name: 'Set Location' },
+      { key: 'assign', display_name: 'Assign License' }
+    ] },
+    { key: 'send_email', display_name: 'Welcome Email', description: '', icon: 'Mail', sub_steps: [
+      { key: 'send', display_name: 'Sending Email' },
+      { key: 'complete', display_name: 'Completed' }
+    ] }
   ]);
 
   useEffect(() => {
@@ -73,8 +87,8 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
         const response = await fetch('/api/v1/jobs/steps');
         if (response.ok) {
           const data = await response.json();
-          if (Array.isArray(data) && data.length > 0) {
-            setStepsSchema(data);
+          if (data.steps && Array.isArray(data.steps) && data.steps.length > 0) {
+            setStepsSchema(data.steps);
           }
         }
       } catch (e) {
@@ -443,11 +457,34 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
                             const stepTitle = step.display_name;
                             const stepLogs = (jobLogsCache[job.id] || []).filter((l) => l.step === step.key || (step.key === 'ad_creation' && l.step === 'pipeline'));
 
+                            const subStates: Record<string, string> = {};
+                            stepLogs.forEach(log => {
+                              if (log.metadata && log.metadata.sub_step) {
+                                subStates[log.metadata.sub_step] = (log.metadata.sub_step_status || 'RUNNING').toUpperCase();
+                              }
+                            });
+
                             return (
                               <div key={step.key} className="space-y-4">
                                 <h4 className="font-bold text-xs text-primary uppercase border-b pb-1.5 mb-2 flex items-center gap-1.5">
                                   <DynamicIcon name={step.icon} className="h-3.5 w-3.5 shrink-0" /> {stepTitle}
                                 </h4>
+                                
+                                {step.sub_steps && step.sub_steps.length > 0 && (
+                                  <div className="mb-3 p-2.5 bg-white rounded-lg border border-outline-variant space-y-2 font-sans text-[10px]">
+                                    {step.sub_steps.map((sub: any) => {
+                                      const sState = subStates[sub.key] || 'STANDBY';
+                                      const dotClass = sState === 'SUCCESS' ? 'bg-secondary' : sState === 'RUNNING' ? 'bg-primary animate-pulse' : sState === 'FAILED' ? 'bg-error' : 'bg-slate-300';
+                                      return (
+                                        <div key={sub.key} className="flex items-center gap-2 text-slate-700">
+                                          <span className={`h-2 w-2 rounded-full ${dotClass}`} />
+                                          <span className={sState === 'SUCCESS' ? 'line-through text-slate-400 font-medium' : sState === 'FAILED' ? 'text-error font-bold' : 'font-semibold'}>{sub.display_name}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+
                                 <div className="space-y-3 relative pl-3">
                                   {stepLogs.length > 0 ? (
                                     stepLogs.map((log) => (
