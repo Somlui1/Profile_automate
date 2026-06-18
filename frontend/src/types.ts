@@ -58,6 +58,14 @@ export interface JobLog {
   timestamp: string; // ISO string
 }
 
+export interface StepSchema {
+  key: string;
+  display_name: string;
+  description?: string;
+  icon: string;
+  sub_steps?: any[];
+}
+
 export interface Job {
   id: string;
   status: 'queued' | 'processing' | 'success' | 'failed' | 'paused' | 'cancelled';

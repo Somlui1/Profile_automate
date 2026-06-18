@@ -32,18 +32,21 @@ class ActiveDirectoryService:
         self._real_ad_working = False
         
         if (has_hosts and has_creds) and LDAP_AVAILABLE:
-            try:
-                # Test connection to real AD using ignore_mock=True to bypass property check
-                conn = self._get_connection(ignore_mock=True)
-                if conn:
-                    conn.unbind()
-                self._real_ad_working = True
-                logger.info("Successfully connected to real Active Directory LDAP.")
-            except Exception as e:
-                logger.warning(
-                    f"Could not connect to real Active Directory on startup: {e}. "
-                    f"Set correct AD_HOSTS, AD_USER, and AD_PASSWORD in .env."
-                )
+            if settings.SYSTEM_MODE == "mock":
+                logger.info("SYSTEM_MODE is 'mock'. Skipping real Active Directory connection test on startup.")
+            else:
+                try:
+                    # Test connection to real AD using ignore_mock=True to bypass property check
+                    conn = self._get_connection(ignore_mock=True)
+                    if conn:
+                        conn.unbind()
+                    self._real_ad_working = True
+                    logger.info("Successfully connected to real Active Directory LDAP.")
+                except Exception as e:
+                    logger.warning(
+                        f"Could not connect to real Active Directory on startup: {e}. "
+                        f"Set correct AD_HOSTS, AD_USER, and AD_PASSWORD in .env."
+                    )
         
         if self.mock_mode:
             reason = []

@@ -4,31 +4,47 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Job, JobLog } from '../types';
-import { 
-  Cloud,
-  UserCheck,
-  Mail,
-  Play, 
-  Pause, 
-  Trash2, 
-  Clock, 
-  Check, 
-  AlertTriangle, 
-  X, 
-  RotateCcw, 
-  ChevronDown, 
-  ChevronUp, 
-  Info, 
-  Database, 
-  Printer, 
-  MailCheck, 
-  Hourglass, 
+import { Job, JobLog, StepSchema } from '../types';
+import {
+  Play,
+  Pause,
+  Trash2,
+  Clock,
+  Check,
+  AlertTriangle,
+  X,
+  RotateCcw,
+  ChevronDown,
+  ChevronUp,
+  Info,
+  Database,
+  Printer,
+  MailCheck,
+  Hourglass,
   Loader2,
   CalendarCheck,
   CheckCircle,
-  HelpCircle
+  HelpCircle,
+  UserPlus,
+  Key,
+  Mail
 } from 'lucide-react';
+
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  UserPlus,
+  Printer,
+  Key,
+  Mail,
+  Database,
+  HelpCircle,
+  CheckCircle,
+  Check
+};
+
+const DynamicIcon = ({ name, className }: { name: string; className?: string }) => {
+  const IconComponent = ICON_MAP[name] || HelpCircle;
+  return <IconComponent className={className} />;
+};
 
 interface JobQueueTabProps {
   jobs: Job[];
@@ -44,36 +60,29 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
   const [expandedJobs, setExpandedJobs] = useState<Record<string, boolean>>({});
   const [jobLogsCache, setJobLogsCache] = useState<Record<string, JobLog[]>>({});
   const [loadingLogs, setLoadingLogs] = useState<Record<string, boolean>>({});
-  const [stepsSchema, setStepsSchema] = useState<any[]>([]);
+  const [stepsSchema, setStepsSchema] = useState<StepSchema[]>([
+    { key: 'ad_creation', display_name: 'AD Account', description: '', icon: 'UserPlus', sub_steps: [] },
+    { key: 'papercut_sync', display_name: 'Papercut Sync', description: '', icon: 'Printer', sub_steps: [] },
+    { key: 'm365_license', display_name: 'M365 License', description: '', icon: 'Key', sub_steps: [] },
+    { key: 'send_email', display_name: 'Welcome Email', description: '', icon: 'Mail', sub_steps: [] }
+  ]);
 
   useEffect(() => {
-    const fetchStepsSchema = async () => {
+    const fetchSteps = async () => {
       try {
-        const res = await fetch('/api/v1/jobs/steps');
-        if (res.ok) {
-          const data = await res.json();
-          setStepsSchema(data.steps || []);
+        const response = await fetch('/api/v1/jobs/steps');
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setStepsSchema(data);
+          }
         }
-      } catch (err) {
-        console.error(err);
+      } catch (e) {
+        console.error("Error fetching steps in JobQueueTab:", e);
       }
     };
-    fetchStepsSchema();
+    fetchSteps();
   }, []);
-
-  const ICON_MAP: Record<string, React.ElementType> = {
-    UserCheck,
-    Printer,
-    Cloud,
-    Mail,
-    Database,
-    Hourglass
-  };
-
-  const getIconComponent = (iconName: string) => {
-    const Icon = ICON_MAP[iconName] || HelpCircle;
-    return <Icon className="h-3.5 w-3.5" />;
-  };
 
   // Trigger metrics
   const activeJobs = jobs.filter((j) => j.status === 'processing' || j.status === 'running');
@@ -107,10 +116,10 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
     if (!createdStr) return '00:00:00';
     try {
       const start = new Date(createdStr).getTime();
-      const end = (status === 'processing' || status === 'queued') 
-        ? Date.now() 
+      const end = (status === 'processing' || status === 'queued')
+        ? Date.now()
         : new Date(updatedStr).getTime();
-      
+
       const diffMs = Math.abs(end - start);
       const diffSecs = Math.floor(diffMs / 1000);
       const hrs = Math.floor(diffSecs / 3600).toString().padStart(2, '0');
@@ -138,10 +147,10 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
     const workflow = job.payload?.workflow_control || {};
 
     let isEnabled = true;
-    const stepDef = stepsSchema.find(s => s.key === stepId);
-    if (stepDef && workflow[stepDef.enable_key] === false) {
-      isEnabled = false;
-    }
+    if (stepId === 'ad_creation' && workflow.enable_ad_creation === false) isEnabled = false;
+    if (stepId === 'papercut_sync' && workflow.enable_papercut_sync === false) isEnabled = false;
+    if (stepId === 'm365_license' && workflow.enable_microsoft_365_license === false) isEnabled = false;
+    if (stepId === 'send_email' && workflow.enable_send_email === false) isEnabled = false;
 
     const stepsOrder = stepsSchema.map(s => s.key);
     const targetIdx = stepsOrder.indexOf(stepId);
@@ -187,7 +196,7 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
 
   return (
     <div className="space-y-6">
-      
+
       {/* Search Header controllers bar */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 shrink-0 select-none">
         <div>
@@ -195,14 +204,14 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
           <p className="text-xs text-on-surface-variant font-body mt-0.5">Monitoring Redis-backed parallel provisioning workflows</p>
         </div>
         <div className="flex gap-2">
-          <button 
+          <button
             onClick={() => addToast("ฟังก์ชันเคลียร์ประวัติล้มเหลว กำลังตรวจสอบคิวระบาย", "info")}
             className="flex items-center gap-1.5 px-4 py-2 border border-error text-error font-bold text-xs rounded hover:bg-error/5 cursor-pointer duration-100 select-none"
           >
             Retry Failed
           </button>
-          <button 
-            onClick={() => addToast("คิวเวิร์กโลว์ถูกจัดเรียงตามระยะเวลาเสร็จสิ้นล่าสุดเรียบร้อย", "success")} 
+          <button
+            onClick={() => addToast("คิวเวิร์กโลว์ถูกจัดเรียงตามระยะเวลาเสร็จสิ้นล่าสุดเรียบร้อย", "success")}
             className="flex items-center gap-1.5 px-4 py-2 border border-outline text-outline font-bold text-xs rounded hover:bg-slate-100 cursor-pointer duration-100 select-none"
           >
             Filter Logs
@@ -276,20 +285,17 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
               const isHPriority = job.payload?.workflow_control?.high_priority;
               const hasExpanded = expandedJobs[job.id];
 
-              
-
               return (
-                <div 
+                <div
                   key={job.id}
-                  className={`border border-outline-variant rounded-xl bg-white overflow-hidden shadow-sm border-l-4 transition-all ${
-                    status === 'failed' || status === 'cancelled'
-                      ? 'border-error' 
-                      : status === 'success' 
-                        ? 'border-secondary' 
-                        : 'border-primary'
-                  }`}
+                  className={`border border-outline-variant rounded-xl bg-white overflow-hidden shadow-sm border-l-4 transition-all ${status === 'failed' || status === 'cancelled'
+                    ? 'border-error'
+                    : status === 'success'
+                      ? 'border-secondary'
+                      : 'border-primary'
+                    }`}
                 >
-                  <div 
+                  <div
                     onClick={() => handleToggleDetails(job.id)}
                     className="p-5 hover:bg-slate-50 transition-colors flex flex-col xl:flex-row xl:items-center gap-4 cursor-pointer select-none"
                   >
@@ -299,30 +305,81 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
                         {job.payload?.metadata?.requester_info?.name_english || 'System Workflow'}
                       </p>
                       <p className="text-[10px] text-outline font-mono mt-0.5">job_id: {job.id}</p>
-                      <span className={`inline-block mt-1.5 px-2 py-[2px] rounded-full text-[9px] font-black uppercase tracking-wider ${
-                        isHPriority ? 'bg-primary/10 text-primary' : 'bg-surface-variant text-on-surface-variant'
-                      }`}>
+                      <span className={`inline-block mt-1.5 px-2 py-[2px] rounded-full text-[9px] font-black uppercase tracking-wider ${isHPriority ? 'bg-primary/10 text-primary' : 'bg-surface-variant text-on-surface-variant'
+                        }`}>
                         {isHPriority ? 'HIGH PRIORITY' : 'NORMAL PRIORITY'}
                       </span>
                     </div>
 
                     {/* Step-by-Step progress lines */}
                     <div className="flex-grow pt-1">
-                      <p className="text-[10px] font-bold text-outline uppercase tracking-wider mb-2 leading-none">Pipeline Status</p>
-                      <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-2">
-                        {stepsSchema.map((step, idx) => {
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 leading-none">Pipeline Status</p>
+
+                      {/* Segmented Bar */}
+                      <div className="flex items-center gap-1.5 w-full mt-1.5">
+                        {stepsSchema.map((step) => {
                           const stateStyle = getStepStateStyle(job, step.key);
-                          const isLast = idx === stepsSchema.length - 1;
+                          let bgClass = "bg-slate-100";
+                          if (stateStyle.state === 'success') bgClass = "bg-emerald-500";
+                          else if (stateStyle.state === 'processing') bgClass = "bg-primary animate-pulse";
+                          else if (stateStyle.state === 'failed') bgClass = "bg-red-500";
+                          else if (stateStyle.state === 'skipped') bgClass = "bg-amber-400";
+                          else if (stateStyle.state === 'paused') bgClass = "bg-orange-400 animate-pulse";
+
                           return (
-                            <React.Fragment key={step.key}>
-                              <div className="flex flex-col items-center gap-1 min-w-[72px]">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center border shrink-0 ${stateStyle.color}`} title={stateStyle.label}>
-                                  {stateStyle.state === 'queued' || stateStyle.state === 'skipped' ? getIconComponent(step.icon) : stateStyle.icon}
-                                </div>
-                                <span className="text-[9px] font-semibold text-slate-500 whitespace-nowrap text-center">{step.display_name}</span>
+                            <div
+                              key={step.key}
+                              className={`h-2 flex-grow rounded-full ${bgClass} transition-all duration-300 relative group`}
+                              title={`${step.display_name}: ${stateStyle.label}`}
+                            >
+                              {/* Tooltip on hover */}
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-800 text-white text-[9px] px-2 py-0.5 rounded shadow-lg whitespace-nowrap z-30 font-sans">
+                                {step.display_name} ({stateStyle.label})
                               </div>
-                              {!isLast && <div className={`h-[2px] ${getLineClass(stateStyle.state)} w-6 lg:flex-grow mb-4 shrink-0`} />}
-                            </React.Fragment>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Pill Tags representation */}
+                      <div className="flex flex-wrap gap-1 mt-2.5">
+                        {stepsSchema.map((step) => {
+                          const stateStyle = getStepStateStyle(job, step.key);
+                          let dotClass = "bg-slate-300";
+                          let textClass = "text-slate-400";
+                          let bgBadge = "bg-slate-50 border-slate-100";
+
+                          if (stateStyle.state === 'success') {
+                            dotClass = "bg-emerald-500";
+                            textClass = "text-emerald-700 font-semibold";
+                            bgBadge = "bg-emerald-50/50 border-emerald-100";
+                          } else if (stateStyle.state === 'processing') {
+                            dotClass = "bg-primary animate-pulse";
+                            textClass = "text-primary font-bold";
+                            bgBadge = "bg-primary/5 border-primary/20 ring-1 ring-primary/5";
+                          } else if (stateStyle.state === 'failed') {
+                            dotClass = "bg-red-500";
+                            textClass = "text-red-700 font-bold";
+                            bgBadge = "bg-red-50/50 border-red-100";
+                          } else if (stateStyle.state === 'skipped') {
+                            dotClass = "bg-amber-500";
+                            textClass = "text-amber-700 font-medium";
+                            bgBadge = "bg-amber-50/50 border-amber-100";
+                          } else if (stateStyle.state === 'paused') {
+                            dotClass = "bg-orange-500";
+                            textClass = "text-orange-700 font-medium";
+                            bgBadge = "bg-orange-50/50 border-orange-100";
+                          }
+
+                          return (
+                            <div
+                              key={step.key}
+                              className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] border ${bgBadge} transition-all duration-200`}
+                              title={`${step.display_name}: ${stateStyle.label}`}
+                            >
+                              <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
+                              <span className={textClass}>{step.display_name}</span>
+                            </div>
                           );
                         })}
                       </div>
@@ -380,48 +437,23 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
                           <Loader2 className="h-4 w-4 animate-spin inline-block text-primary mr-1.5" /> Loading database transactional logs...
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 font-mono text-[11px]">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 font-mono text-[11px]">
                           {/* We segment logs by steps */}
-                          {stepsSchema.map((stepDef) => {
-                            const stepName = stepDef.key;
-                            const stepTitle = stepDef.display_name;
-                            const stepLogs = (jobLogsCache[job.id] || []).filter((l) => l.step === stepName || (stepName === 'ad_creation' && l.step === 'pipeline'));
-
-                            const subStates: Record<string, string> = {};
-                            stepLogs.forEach(log => {
-                               if (log.metadata && log.metadata.sub_step) {
-                                  subStates[log.metadata.sub_step] = log.metadata.sub_step_status.toUpperCase();
-                               }
-                            });
+                          {stepsSchema.map((step) => {
+                            const stepTitle = step.display_name;
+                            const stepLogs = (jobLogsCache[job.id] || []).filter((l) => l.step === step.key || (step.key === 'ad_creation' && l.step === 'pipeline'));
 
                             return (
-                              <div key={stepName} className="space-y-4">
+                              <div key={step.key} className="space-y-4">
                                 <h4 className="font-bold text-xs text-primary uppercase border-b pb-1.5 mb-2 flex items-center gap-1.5">
-                                  {getIconComponent(stepDef.icon)} {stepTitle}
+                                  <DynamicIcon name={step.icon} className="h-3.5 w-3.5 shrink-0" /> {stepTitle}
                                 </h4>
-                                
-                                {stepDef.sub_steps && stepDef.sub_steps.length > 0 && (
-                                  <div className="mb-3 p-2.5 bg-white rounded-lg border border-outline-variant space-y-2 font-sans text-[10px]">
-                                    {stepDef.sub_steps.map((sub: any) => {
-                                       const sState = subStates[sub.key] || 'STANDBY';
-                                       const dotClass = sState === 'SUCCESS' ? 'bg-secondary' : sState === 'RUNNING' ? 'bg-primary animate-pulse' : 'bg-slate-300';
-                                       return (
-                                          <div key={sub.key} className="flex items-center gap-2 text-slate-700">
-                                            <span className={`h-2 w-2 rounded-full ${dotClass}`} />
-                                            <span className={sState === 'SUCCESS' ? 'line-through text-slate-400 font-medium' : 'font-semibold'}>{sub.display_name}</span>
-                                          </div>
-                                       );
-                                    })}
-                                  </div>
-                                )}
-
                                 <div className="space-y-3 relative pl-3">
                                   {stepLogs.length > 0 ? (
-                                    stepLogs.map((log, idx) => (
+                                    stepLogs.map((log) => (
                                       <div key={log.id} className="relative flex items-start gap-1 pb-1">
-                                        <span className={`h-2 w-2 rounded-full absolute -left-3 top-1.5 ${
-                                          log.status === 'success' ? 'bg-secondary' : log.status === 'failed' ? 'bg-error' : 'bg-primary animate-pulse'
-                                        }`} />
+                                        <span className={`h-2 w-2 rounded-full absolute -left-3 top-1.5 ${log.status === 'success' ? 'bg-secondary' : log.status === 'failed' ? 'bg-error' : 'bg-primary animate-pulse'
+                                          }`} />
                                         <div className="min-w-0">
                                           <p className="font-bold text-slate-800 leading-tight break-words">{log.message}</p>
                                           <p className="text-[9px] text-outline font-semibold mt-0.5">{formatShortTime(log.timestamp)}</p>
@@ -444,7 +476,7 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
             })
           ) : (
             <div className="p-12 text-center text-xs text-outline italic bg-white border border-outline-variant rounded shadow-inner">
-               No historical or active provisioning workloads found in background Queue.
+              No historical or active provisioning workloads found in background Queue.
             </div>
           )}
         </div>
@@ -471,7 +503,7 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
 
         <div className="lg:col-span-2 bg-white border border-outline-variant p-6 rounded-lg shadow-sm select-none">
           <h4 className="font-bold text-primary text-sm mb-4 flex items-center gap-1.5 uppercase tracking-wide">
-             IT Worker Cluster Status
+            IT Worker Cluster Status
           </h4>
           <div className="space-y-3.5">
             <div className="flex items-center gap-3">
