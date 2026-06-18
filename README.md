@@ -1,32 +1,32 @@
-# IT Resource Provisioning System (3-Tier)
+# IT Resource Provisioning System (3-Tier & AI-Ready)
 
-An automated enterprise resource provisioning engine designed to parse request PDFs, create Active Directory (AD) user accounts, synchronise print configurations on PaperCut, and assign Microsoft 365 licenses.
+An automated enterprise resource provisioning engine designed to parse request PDFs, create Active Directory (AD) user accounts, synchronise print configurations on PaperCut, and assign Microsoft 365 licenses. 
+
+Recently upgraded to a **Zero-Change UI** and **AI-Friendly Architecture**, enabling dynamic step configuration without frontend recompilation.
 
 ---
 
-## 🏗️ System Architecture
+## 🏗️ System Architecture & Data Flow
 
-The system utilizes a modern 3-Tier architecture comprising a Vite React frontend dashboard, a Python FastAPI gateway, and an asynchronous Redis Queue (RQ) background worker.
+The system utilizes a modern 3-Tier architecture comprising a Vite React frontend dashboard, a Python FastAPI gateway, and an asynchronous Redis Queue (RQ) background worker. 
+
+The frontend relies heavily on the `steps_schema.json` data contract, dynamically rendering the UI based on the backend's configuration.
 
 ```mermaid
 graph TD
     %% Frontend Layer
     subgraph Frontend [React Admin Dashboard]
         Vite[Vite React App]
+        DynamicUI[Dynamic UI Mapper]
         Tailwind[Tailwind CSS v4]
-        Motion[Motion Animations]
-        Lucide[Lucide Icons]
     end
 
     %% Backend Layer
     subgraph Backend [FastAPI Application Server]
         FastAPI[FastAPI Router]
-        PDFService[PDF Parser Service - pypdf]
-        ADService[AD LDAP Service - ldap3]
-        Papercut[Papercut Service - xmlrpc]
-        M365[M365 Service - Graph API]
-        EmailService[Email Service - smtplib]
-        SSE[SSE Starlette - Real-time Events]
+        SchemaEndpoint["/api/v1/jobs/steps"]
+        SSE["/stream (Real-time Events)"]
+        Services[Integration Services<br/>AD, Papercut, M365]
         DB[(SQLite jobs.db)]
     end
 
@@ -40,35 +40,42 @@ graph TD
     subgraph Worker [RQ Worker Process]
         RQWorker[RQ Worker Instance]
         Pipeline[Sync User Job Pipeline]
-    end
-
-    %% External Directory Services
-    subgraph External [Target External Infrastructure]
-        AD[(Active Directory / LDAP)]
-        PC[Papercut Printer server]
-        MSGraph[Microsoft Graph API]
-        SMTPServer[(SMTP Server - No Auth)]
+        StepsJSON{steps_schema.json}
     end
 
     %% Connection routes
-    Vite -->|1. Upload PDF / Submit Sync| FastAPI
-    Vite -->|2. Get SSE Real-time Logs| SSE
-    FastAPI -->|Write Jobs / Retrieve| DB
+    Vite -->|1. Fetch UI Structure| SchemaEndpoint
+    SchemaEndpoint -.-> StepsJSON
+    Vite -->|2. Upload PDF & Sync| FastAPI
+    Vite -->|3. Listen to Status| SSE
+    
+    FastAPI -->|Write Jobs| DB
     FastAPI -->|Enqueue Task| RQ
     RQ -->|Message Broker| Redis
     Redis -->|Pull Task| RQWorker
-    RQWorker -->|Run Task| Pipeline
-    Pipeline -->|Create User| ADService
-    Pipeline -->|Card PIN Sync| Papercut
-    Pipeline -->|Check / Apply License| M365
-    Pipeline -->|Send Welcome Email| EmailService
-    Pipeline -->|Update Log Event| Redis
+    
+    RQWorker -->|Read Steps| StepsJSON
+    RQWorker -->|Run External Tasks| Pipeline
+    Pipeline -->|Update Sub-step JSON| Redis
     Redis -->|Push Log via Uvicorn| SSE
-    ADService -->|LDAPs Port 636| AD
-    Papercut -->|XML-RPC Port 9191| PC
-    M365 -->|OAuth2 HTTPS| MSGraph
-    EmailService -->|SMTP Port 25 - No Auth| SMTPServer
 ```
+
+---
+
+## ⚡ Zero-Change UI & Dynamic Schema
+
+This project employs a **Zero-Change Frontend** paradigm:
+- **No Hardcoded Steps:** The React UI (`PDFProvisionTab.tsx` & `JobQueueTab.tsx`) uses `.map()` loops over the API schema.
+- **`steps_schema.json`:** Located in the `/worker` directory, this is the **Single Source of Truth**. If you add a new step (e.g., `sap_sync`), you simply inject a JSON block here.
+- **Real-time Metadata:** As the worker progresses, it embeds `metadata` (`sub_step`, `sub_step_status`) into the `job_logs`, which SSE pushes to the UI for live checkbox animations.
+
+---
+
+## 🤖 AI-Friendly Structure (Agent Context)
+
+To facilitate autonomous AI development and prevent context hallucination, the repository implements strict contextual boundaries:
+- **`.agentignore`**: Prevents AI models from scanning obsolete `temp/` scripts, saving token limits.
+- **Contextual `ARCHITECTURE.md`**: Found at the root and inside every major tier directory (`api/`, `worker/`, `frontend/`). These files provide AI agents with immediate rules of engagement (e.g., SSE flow, explicit icon imports).
 
 ---
 
@@ -76,174 +83,92 @@ graph TD
 
 ### 1. Frontend Client
 * **Framework**: React 19 (Single-page application)
-* **Build Tool & Server**: Vite 6 (Fast local compiling and proxy routing)
-* **Language**: TypeScript (Type-safe component design)
-* **Styling**: Tailwind CSS v4 (Utility-first styling with modern CSS configuration)
-* **Animations**: Motion (Clean transitions and micro-animations)
-* **Icons**: Lucide React (Consistent visual UI indicators)
+* **Build Tool**: Vite 6 (With `manualChunks` vendor splitting for extreme optimization)
+* **Styling**: Tailwind CSS v4 & Motion
+* **Icons**: Lucide React (Using Explicit Mapping for Tree-Shaking)
 
 ### 2. Backend REST API
-* **Language**: Python 3.11+
-* **Framework**: FastAPI (High-performance web API framework)
-* **Web Server**: Uvicorn (Asynchronous ASGI server)
-* **Real-time Engine**: sse-starlette (Server-Sent Events streaming server-side logs)
-* **Database**: SQLite3 (Persistent tracking of provisioning jobs and logs)
-* **Configuration**: python-dotenv (Environment configuration injector)
+* **Framework**: FastAPI (Python 3.11+) with Uvicorn
+* **Real-time Engine**: sse-starlette 
+* **Database**: SQLite3 (Stores `metadata` JSON strings)
 
-### 3. Service Integrations (Backend)
-* **Active Directory Sync**: `ldap3` (Python LDAP client supporting LDAPS, failover configurations, and SSL)
-* **PaperCut Integration**: `xmlrpc.client` (Built-in XML-RPC protocol for user property synchronization)
-* **M365 License Provisioning**: `requests` (OAuth2 Client Credentials flow and Microsoft Graph API queries)
-* **Email Notification**: `smtplib` / `email` (Built-in SMTP client sending notifications via unauthenticated SMTP relay)
-* **PDF Extraction**: `pypdf` (Robust layout parsing of IT Resource request forms)
-
-### 4. Background Job Queue
-* **Broker**: Redis (High-speed message cache store)
-* **Task Engine**: `rq` (Redis Queue for asynchronous job orchestration and worker execution)
+### 3. Background Job Queue & Worker
+* **Broker**: Redis
+* **Task Engine**: `rq` (Redis Queue)
+* **Services**: `ldap3` (AD), `xmlrpc.client` (PaperCut), `requests` (M365 Graph), `smtplib` (Email)
 
 ---
 
 ## 🔄 User Provisioning Sequence Workflow
 
-The sequential steps from parsing an administrative request PDF form to executing background synchronizations are detailed below.
-
 ```mermaid
 sequenceDiagram
     autonumber
     actor Admin as System Administrator
-    participant UI as Vite React Admin UI
-    participant API as FastAPI Backend Server
-    participant DB as SQLite database
-    participant Redis as Redis Queue (RQ)
-    participant Worker as Python RQ Worker
-    participant AD as Active Directory (LDAPs)
-    participant PC as Papercut server (XML-RPC)
-    participant MS as Microsoft Graph (OAuth2)
-    participant Mail as SMTP Relay Server (No Auth)
+    participant UI as React UI (Dynamic)
+    participant API as FastAPI Backend
+    participant DB as SQLite
+    participant Worker as Python Worker (RQ)
+    participant External as AD / M365 / Papercut
 
-    Note over Admin, UI: Phase 1: PDF Request Parsing & Verification
-    Admin->>UI: Upload Resource Request PDF
-    UI->>API: POST /api/v1/parse/ (multipart/form-data)
-    Note over API: pdf_service parses PDF using pypdf<br/>Extracts Thai/EN names, Position, Dept, etc.
-    API-->>UI: Return extracted JSON payload
-    UI->>UI: Pre-populate step inputs with JSON data
-    Admin->>UI: Click "Verify" to validate inputs
-    UI->>API: POST /api/v1/user/ad/check-user (payload)
-    API->>AD: LDAP Search for existing sAMAccountName / Name
-    AD-->>API: LDAP search entries (Exists/Not Exists)
-    API-->>UI: Return AD Verification Status (e.g. Exists = False)
-
-    Note over Admin, UI: Phase 2: M365 License Fetching
-    UI->>API: GET /api/v1/m365/licenses
-    API->>MS: OAuth2 token request & GET /subscribedSkus
-    MS-->>API: Subscribed Skus JSON payload
-    API-->>UI: Return available M365 Friendly mapped list
-
-    Note over Admin, UI: Phase 3: Job Submission & Queueing
-    Admin->>UI: Select OU Placement & M365 Licenses, then click "Submit Sync"
-    UI->>API: POST /api/v1/user/sync (Sync Payload)
-    Note over API: Initialize Job Record in SQLite DB
-    API->>DB: INSERT INTO jobs (status='queued', current_step='ad_creation')
-    API->>Redis: Enqueue 'sync_user' task (job_id, payload)
-    API-->>UI: Return queued Job ID response
-    UI->>UI: Redirect to Job Queue / Start listening to SSE Logs
-
-    Note over UI, API: Phase 4: Real-time Event Streaming
-    UI->>API: GET /api/v1/jobs/stream/{job_id} (EventSource)
-    API-->>UI: HTTP 200 Stream Event Connection established
-
-    Note over Redis, Worker: Phase 5: Asynchronous Worker Pipeline Execution
-    Worker->>Redis: Dequeue task 'sync_user' (job_id)
-    Worker->>DB: UPDATE job status = 'processing'
-    Worker->>API: SSE Log: "Pipeline initiated in processing mode"
-    API-->>UI: SSE Push Message: "Pipeline initiated..."
-
-    Note over Worker, AD: Step 5.1: Active Directory Provisioning
-    Worker->>AD: Connect & Bind using Admin DN/Password
-    Worker->>AD: Create User Object (Disabled, UPN, sAMAccountName)
-    AD-->>Worker: Success / Fail
-    Worker->>DB: UPDATE job current_step = 'papercut_sync'
-    Worker->>API: SSE Log: "LDAP Object successfully established"
-    API-->>UI: SSE Push Message
-
-    Note over Worker, PC: Step 5.2: Papercut Synchronize & PIN Setup
-    Worker->>PC: performUserAndGroupSync (Trigger AD refresh)
-    PC-->>Worker: Sync trigger accepted
-    Worker->>PC: setUserProperty (username, 'card-number', printCode)
-    PC-->>Worker: Success / Fail
-    Worker->>DB: UPDATE job current_step = 'm365_license'
-    Worker->>API: SSE Log: "Papercut sync complete. PIN activated."
-    API-->>UI: SSE Push Message
-
-    Note over Worker, MS: Step 5.3: Microsoft 365 License Assignment
-    Worker->>MS: Get Access Token & POST /users/{id}/assignLicense
-    MS-->>Worker: License Assignment response
-    Worker->>DB: UPDATE job current_step = 'send_email'
-    Worker->>API: SSE Log: "O365 Graph License Assigned."
-    API-->>UI: SSE Push Message
-
-    Note over Worker, Mail: Step 5.4: Email Notification Dispatch
-    Worker->>Mail: Connect & Send Onboarding Email (No Auth)
-    Mail-->>Worker: SMTP delivery acceptance response
-    Worker->>DB: UPDATE job status = 'success', current_step = 'done'
-    Worker->>API: SSE Log: "Welcome onboarding email dispatched. Pipeline finished."
-    API-->>UI: SSE Push Message
+    UI->>API: GET /api/v1/jobs/steps
+    API-->>UI: Return steps_schema.json (UI Builds Itself)
     
-    Note over UI: UI Displays Job Complete with Green Progress Checkmarks
+    Admin->>UI: Upload PDF & Verify Data
+    UI->>API: POST /api/v1/user/sync
+    API->>DB: INSERT INTO jobs
+    API->>Worker: Enqueue Task via Redis
+    UI->>API: GET /api/v1/jobs/stream (SSE)
+    
+    loop Dynamic Pipeline Execution
+        Worker->>External: Execute Step (e.g., AD Creation)
+        External-->>Worker: Status Return
+        Worker->>DB: UPDATE job_logs (with Metadata)
+        Worker->>API: Redis Pub/Sub Log Event
+        API-->>UI: SSE Push (UI updates sub-step checklist)
+    end
+    
+    Worker->>API: Finalize Job
+    API-->>UI: SSE Job Complete
 ```
-
----
-
-## 🔌 External Connection & Protocol Specifications
-
-Detailed protocols, standard port configuration, authentication flows, and software libraries utilized for external integrations:
-
-| Target Infrastructure | Protocol / Interface | Default Port | Authentication / Security Method | Driver / Client Library |
-| :--- | :--- | :--- | :--- | :--- |
-| **Active Directory** | **LDAPs** (LDAP over TLS) | `636` (TCP) | Simple Bind (Admin DN / credentials) | `ldap3` (Python client) |
-| **PaperCut printer server** | **XML-RPC** (over HTTP/S) | `9191` (HTTP) / `9192` (HTTPS) | Auth API Token (HTTP Header authorization) | `xmlrpc.client` (Python stdlib) |
-| **Microsoft 365 / Entra ID** | **Microsoft Graph REST API** | `443` (HTTPS) | OAuth 2.0 Client Credentials flow (Client ID & Secret) | `requests` (OAuth/REST flow) |
-| **Email Gateway / SMTP** | **SMTP** (Unauthenticated) | `25` (TCP) | No Authentication (Internal IP relay restriction) | `smtplib` / `email` (Python stdlib) |
 
 ---
 
 ## 📂 Project Directory Structure
 
 ```text
-├── api/                      # FastAPI Backend Gateway
-│   ├── core/                 # Configs, SQLite database initializer, exceptions
-│   ├── endpoints/            # REST API routers (Jobs, User, M365, Parser)
-│   ├── services/             # Business log adapters (AD LDAP, PaperCut, M365 Graph, PDF)
-│   └── main.py               # Application startup script and static files mount
+├── .agentignore              # AI-optimization ignore rules
+├── ARCHITECTURE.md           # Root rules for AI and Developers
+├── api/                      
+│   ├── ARCHITECTURE.md       # API boundary rules
+│   ├── core/                 
+│   ├── endpoints/            
+│   └── services/             
 │
-├── worker/                   # Background Task Engine
-│   ├── tasks/                # Sync task pipelines (sync_user.py)
-│   └── run.py                # RQ Worker boot daemon
+├── worker/                   
+│   ├── ARCHITECTURE.md       # Worker pipeline rules
+│   ├── steps_schema.json     # 🌟 Single Source of Truth for pipeline
+│   └── tasks/                
 │
-├── frontend/                 # React Client Panel
-│   ├── dist/                 # Production compiled bundles (Vite build output)
-│   ├── src/                  # React Source Code
-│   │   ├── components/       # UI panels (PDFProvision, JobQueue, ADExplorer, Dashboard)
-│   │   ├── App.tsx           # App Router Layout
-│   │   ├── main.tsx          # Client bundle initiator
-│   │   └── types.ts          # Shared TypeScript type interfaces
-│   ├── index.html            # Web Layout template
-│   └── package.json          # Vite scripts and frontend dependencies
+├── frontend/                 
+│   ├── ARCHITECTURE.md       # React/Vite boundary rules
+│   ├── src/                  
+│   └── vite.config.ts        # Optimized with Vendor chunking
 │
-├── data/                     # SQLite database storage directory (jobs.db)
-├── .env                      # Universal system configuration environment parameters
-├── docker-compose.yml        # Multi-container microservices compose definition
-└── README.md                 # System overview documentation
+├── data/                     # SQLite storage (jobs.db)
+├── temp/                     # Scratchpad for scripts (Git & AI Ignored)
+├── docker-compose.yml        
+└── README.md                 
 ```
 
 ---
 
 ## 🚀 Getting Started
 
-Ensure Docker and Docker Compose are installed on your target deployment environment.
+Ensure Docker and Docker Compose are installed.
 
 ### 1. Environment Configurations
-Create a `.env` file at the root of the workspace matching the required settings:
+Create a `.env` file at the root:
 ```env
 # Active Directory / LDAP Server
 AD_HOSTS=10.10.10.250
@@ -255,17 +180,16 @@ AD_BASE_DN=DC=aapico,DC=com
 PAPERCUT_API_URL=http://10.10.10.235:9191/rpc/api/xmlrpc
 PAPERCUT_API_KEY=your-auth-token-key
 
-# SMTP Notification Settings (No Authentication)
+# SMTP Notification Settings
 SMTP_HOST=smtp.aapico.com
 SMTP_PORT=25
 SMTP_FROM=itsupport@aapico.com
 
-# Redis Broker (Docker default)
+# Redis Broker
 REDIS_URL=redis://redis:6379/0
 ```
 
 ### 2. Startup Commands
-Run the compose stack in detached mode:
 ```bash
 # Build and run containers
 docker compose up -d --build
@@ -274,7 +198,7 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
-### 3. UI and Docs Access URLs
-* **Admin dashboard panel**: [http://localhost:8000/](http://localhost:8000/)
-* **Swagger API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
-* **RQ Queue Dashboard**: [http://localhost:8000/rq](http://localhost:8000/rq)
+### 3. Access URLs
+* **Admin dashboard**: [http://localhost:8000/](http://localhost:8000/)
+* **Swagger API**: [http://localhost:8000/docs](http://localhost:8000/docs)
+* **RQ Dashboard**: [http://localhost:8000/rq](http://localhost:8000/rq)
