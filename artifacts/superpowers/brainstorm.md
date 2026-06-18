@@ -1,43 +1,33 @@
-# Superpowers Brainstorm
-
 ## Goal
-ปรับโครงสร้างโปรเจกต์และสร้างระบบเอกสาร (Markdown) ให้เป็น **AI-Friendly Repository** อย่างเต็มรูปแบบ เพื่อให้ AI (เช่นตัวผมเอง) สามารถทำความเข้าใจ Context, ขอบเขตการทำงาน, และโครงสร้างข้อมูลได้อย่างรวดเร็ว แม่นยำ รวมทั้งกำจัดไฟล์ขยะเพื่อลด Token ในการประมวลผล
+ระบุสาเหตุที่ Sub-steps ในหน้า Job Queue ยังคงแสดงสถานะเป็นสีเทา (STANDBY) ทั้งที่แก้โค้ด UI ไปแล้ว และหาทางแก้ไขระบบ Log ทั้งหมดให้ทำงานได้จริง รวมถึงป้องกันไม่ให้เกิดปัญหาเดิมซ้ำ
 
 ## Constraints
-- เอกสารอธิบายโครงสร้างต้องกระชับ (Concise) ไม่อธิบายยืดเยื้อจนเปลือง Context window ของ AI
-- การเขียน Markdown ไม่ควรลึกถึงระดับบรรทัดต่อบรรทัด (เพราะโค้ดเปลี่ยนบ่อย) แต่ควรเน้นที่ระดับ "ภาพรวม" และ "การเชื่อมต่อระหว่างระบบ" (Architecture & Data Flow)
-- ฟังก์ชันการทำงานเดิมของระบบ Provisioning (AD, Papercut, M365) ต้องทำงานได้ปกติหลังจัดโครงสร้าง
+- ต้องไม่ทำให้ข้อมูล log เก่าสูญหาย
+- ต้องใช้วิธีการ Migrate ฐานข้อมูลที่ถูกต้องกับ SQLite
+- แก้ไขปัญหา Background worker ที่ค้างอยู่ (Stale process)
 
 ## Known context
-- โปรเจกต์ปัจจุบันแบ่งเป็น 3 ส่วนหลักอย่างชัดเจน: `api` (FastAPI), `worker` (RQ/Redis), `frontend` (React/Vite)
-- มีการใช้ระบบ `steps_schema.json` เพื่อเชื่อม Data contract ระหว่าง Worker กับ Frontend แล้ว
-- โปรเจกต์มีโฟลเดอร์ขยะ เช่น `temp/` ที่ใช้เขียนสคริปต์แก้ไขเฉพาะกิจสะสมอยู่ และอาจมีโค้ดเก่าที่ไม่ได้ใช้
+- โค้ดฝั่ง UI ได้ถูกซ่อมแซมให้ดึง `log.metadata.sub_step` ตาม schema ที่ถูกต้องแล้ว
+- เมื่อตรวจสอบฐานข้อมูล `data/jobs.db` พบว่าตาราง `job_logs` **ไม่มีคอลัมน์ `metadata TEXT`** อยู่ในตารางจริง เนื่องจากฐานข้อมูลถูกสร้าง (init_db) ไปก่อนหน้าที่จะมีการเพิ่มฟิลด์นี้ในโค้ด (SQLite `CREATE TABLE IF NOT EXISTS` จะไม่ไปเพิ่มคอลัมน์ใหม่ให้ตารางที่มีอยู่แล้ว)
+- สาเหตุที่ระบบไม่พัง (Crash) ระหว่างทำงาน เนื่องจาก **Background Worker (Python/RQ)** ที่รันอยู่ เป็น Process เก่าที่ค้างอยู่ในหน่วยความจำ ซึ่งรันโค้ด `add_log` เวอร์ชันเก่า (เวอร์ชันที่ไม่ได้ Insert คอลัมน์ `metadata`)
+- หาก Restart Worker ในตอนนี้ ระบบจะพังทันที (`sqlite3.OperationalError: table job_logs has no column named metadata`) เพราะโค้ดใหม่จะพยายาม Insert เข้าคอลัมน์ที่ไม่มีอยู่จริง ทำให้การทำงานของ Pipeline ไม่สามารถเซฟ log และอาจจะทำให้ระบบล่มได้
+- ฝั่ง Frontend เมื่อดึง API `/logs` จะได้ข้อมูลที่ไม่มี `metadata` เพราะฐานข้อมูลไม่มีให้เก็บ จึงเป็นผลให้จุดไข่ปลาสถานะเป็น STANDBY ตลอดกาล
 
 ## Risks
-- **Outdated Documentation**: หากเขียน Markdown ไว้ทุกที่แบบละเอียดยิบ เมื่อมีการแก้โค้ดแต่ลืมแก้ Markdown จะทำให้ AI สับสน (Hallucination) ในอนาคต
-- **Over-fragmentation**: การแยกไฟล์ย่อยเยอะเกินไป ทำให้ AI ต้องใช้ Tool สแกนไฟล์หลายรอบกว่าจะเจอจุดที่ต้องแก้
+- หากทำการลบฐานข้อมูลทิ้ง (`rm data/jobs.db`) ข้อมูล Job เก่าๆ จะหายไปทั้งหมด
+- หากแก้แต่ Database แต่ไม่ Restart Worker โค้ดที่รันอยู่ก็จะยังคงส่งค่าโดยไม่มี `metadata` เข้ามาอยู่ดี (Process เก่า)
+- หาก Restart Worker ก่อนที่จะแก้ Database ระบบจะ Crash เพราะการ Schema Mismatch
 
 ## Options (2–4)
-1. **AI-Context Files + Aggressive Pruning (แนะนำ)**:
-   - สแกนและลบไฟล์จำพวก `temp/`, `scripts/` เก่าๆ, คอมเมนต์โค้ดตาย (Dead code) ออกให้หมด
-   - สร้างไฟล์ `ARCHITECTURE.md` หรือ `README-AI.md` ในแต่ละโฟลเดอร์หลัก (`api`, `worker`, `frontend`) อธิบายเฉพาะ Data flow และหลักการ (เช่น กฎของการทำ SSE)
-   - ใช้ Docstrings / JSDoc อธิบายพารามิเตอร์ภายในฟังก์ชันแทนการสร้างไฟล์แยก
-
-2. **Knowledge Base System**:
-   - พัฒนาโฟลเดอร์ `.agent/knowledge/` เก็บ Design Decisions สำคัญๆ (เช่น วิธีการ Map M365 Licenses หรือวิธีคุยกับ AD) เป็นไฟล์ Markdown ย่อยๆ 
-   - เมื่อ AI จะทำงานเรื่องไหน ก็ให้ไปอ่าน Knowledge เรื่องนั้นๆ ก่อน
-
-3. **Inline Self-Documenting Only**:
-   - ไม่สร้างไฟล์ Markdown แยกเลย แต่บังคับให้ใส่ JSDoc และ Python Type Hints ทุกจุด 
-   - ข้อเสียคือ AI อาจจะไม่เห็น "ภาพรวม" ของทั้งระบบเวลาต้องเชื่อมต่อ API กับ Frontend
+1. **[Database Migration] (Recommended)**: ใช้คำสั่ง SQL `ALTER TABLE job_logs ADD COLUMN metadata TEXT;` เพื่อเพิ่มคอลัมน์เข้าฐานข้อมูลเดิมโดยไม่ให้ข้อมูลเก่าหาย จากนั้นค้นหาและ Kill Process ของ Worker เก่าทั้งหมด และ Start API / Worker ขึ้นมาใหม่ เพื่อให้ระบบโหลดโค้ดตัวปัจจุบันขึ้นมาใช้งาน
+2. **[Hard Reset Database]**: ลบไฟล์ `data/jobs.db` ทิ้งแล้วให้ระบบสร้างใหม่ (ข้อมูลหายหมด) แล้วทำการ Restart Process ทุกตัวให้ใช้โค้ดใหม่ล่าสุด (เหมาะสำหรับ Development environment ที่ไม่ต้องกังวลเรื่องข้อมูล)
+3. **[Frontend Mocking]**: เลิกใช้ `metadata` จาก Backend แล้วพยายาม Parse คำจากข้อความ Log (message) บน Frontend โดยใช้ Regex จับคำ (ไม่แนะนำอย่างยิ่ง เพราะซับซ้อนและผิดพลาดได้ง่าย)
 
 ## Recommendation
-**เลือกใช้วิธีผสมผสาน (Option 1 + 2):**
-1. **Clean up**: ลบไฟล์ที่ไม่ใช้งานทันที (โฟลเดอร์ `temp`, สคริปต์ที่ใช้ครั้งเดียวทิ้ง)
-2. **Contextual Markdown**: วางไฟล์ `ARCHITECTURE.md` สั้นๆ ไว้ใน root, `api/`, `worker/`, `frontend/` เพื่ออธิบายสถาปัตยกรรม (เช่น Frontend ห้าม Hardcode Step นะ ต้องดึงจาก API)
-3. **Enforce Type Hints**: ในโค้ด Python และ TypeScript จะใช้ Types อย่างเคร่งครัด เพราะ AI อ่าน Types ได้ดีกว่าการอ่านคู่มือภาษาคน
+**Option 1: Database Migration** 
+เป็นการแก้ปัญหาที่ต้นเหตุ (Root Cause) ได้อย่างถูกต้องที่สุด และปกป้องข้อมูลเดิมที่มีอยู่ โดยจะต้องไล่ปิด Process เก่าที่ค้างอยู่เพื่อให้มั่นใจว่าระบบจะรันโค้ดเวอร์ชันล่าสุดเสมอและจะไม่เกิดความขัดแย้งของข้อมูล
 
 ## Acceptance criteria
-1. ลบไฟล์และโฟลเดอร์ที่ไม่จำเป็นทั้งหมดออกจาก Workspace สำเร็จ
-2. มีไฟล์ `ARCHITECTURE.md` ประจำโฟลเดอร์หลัก ที่อธิบายหลักการทำงานและกฎ (Rules) ของโฟลเดอร์นั้น
-3. โครงสร้างโปรเจกต์สะอาดขึ้น ไฟล์ขยะถูกกำจัด ทำให้ AI สามารถอ่าน Directory Tree ได้รวดเร็ว
+- คอลัมน์ `metadata TEXT` ถูกสร้างเพิ่มในตาราง `job_logs` ในไฟล์ `data/jobs.db`
+- ไม่มี Python Worker process เก่าที่หลงเหลืออยู่ในระบบ
+- เมื่อรัน API (และ Worker) ใหม่อีกครั้ง แล้วลองสร้าง Job ใหม่ ระบบจะต้องบันทึก JSON ลงไปในฐานข้อมูลได้อย่างถูกต้อง และหน้าจอ UI จะแสดงจุดไข่ปลา Sub-step (เขียว/แดง/กระพริบ) ตามสถานะจริง
