@@ -319,7 +319,7 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center border shrink-0 ${stateStyle.color}`} title={stateStyle.label}>
                                   {stateStyle.state === 'queued' || stateStyle.state === 'skipped' ? getIconComponent(step.icon) : stateStyle.icon}
                                 </div>
-                                <span className="text-[9px] font-semibold text-slate-500 whitespace-nowrap text-center">{step.name}</span>
+                                <span className="text-[9px] font-semibold text-slate-500 whitespace-nowrap text-center">{step.display_name}</span>
                               </div>
                               {!isLast && <div className={`h-[2px] ${getLineClass(stateStyle.state)} w-6 lg:flex-grow mb-4 shrink-0`} />}
                             </React.Fragment>
@@ -384,7 +384,7 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
                           {/* We segment logs by steps */}
                           {stepsSchema.map((stepDef) => {
                             const stepName = stepDef.key;
-                            const stepTitle = stepDef.name;
+                            const stepTitle = stepDef.display_name;
                             const stepLogs = (jobLogsCache[job.id] || []).filter((l) => l.step === stepName || (stepName === 'ad_creation' && l.step === 'pipeline'));
 
                             const subStates: Record<string, string> = {};
@@ -408,7 +408,7 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
                                        return (
                                           <div key={sub.key} className="flex items-center gap-2 text-slate-700">
                                             <span className={`h-2 w-2 rounded-full ${dotClass}`} />
-                                            <span className={sState === 'SUCCESS' ? 'line-through text-slate-400 font-medium' : 'font-semibold'}>{sub.name}</span>
+                                            <span className={sState === 'SUCCESS' ? 'line-through text-slate-400 font-medium' : 'font-semibold'}>{sub.display_name}</span>
                                           </div>
                                        );
                                     })}

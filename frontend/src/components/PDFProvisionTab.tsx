@@ -2119,7 +2119,7 @@ const handleNameTyping = (first: string, last: string) => {
                       <div className="flex-grow">
                         <div className="flex justify-between items-start">
                           <div>
-                            <h4 className="font-bold text-xs text-on-surface">{step.name}</h4>
+                            <h4 className="font-bold text-xs text-on-surface">{step.display_name}</h4>
                             <p className="text-[11px] text-on-surface-variant font-body">{step.description}</p>
                           </div>
                           <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 tracking-wider ${getStageStyle(state).badge}`}>
@@ -2141,7 +2141,7 @@ const handleNameTyping = (first: string, last: string) => {
                               return (
                                 <div key={sub.key} className="flex items-center gap-2 text-[11px] text-slate-700">
                                   <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
-                                  <span>{sub.name}</span>
+                                  <span>{sub.display_name}</span>
                                 </div>
                               );
                             })}
