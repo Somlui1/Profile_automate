@@ -261,6 +261,7 @@ def _execute_ad_creation(job_id: str, payload: dict):
     exists = ad_service.check_user_exists(username)
     if exists:
         add_log(job_id, "ad_creation", "success", f"User {username} already exists. Skipping creation.", metadata={"sub_step": "connect", "sub_step_status": "success"})
+        add_log(job_id, "ad_creation", "success", "Skipping naming as account exists.", metadata={"sub_step": "naming", "sub_step_status": "success"})
     else:
         # Create user in Active Directory
         is_contractor = payload.get("is_contractor", False)
