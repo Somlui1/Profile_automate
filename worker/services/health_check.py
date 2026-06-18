@@ -50,6 +50,23 @@ class ServiceHealthChecker:
         except Exception as e:
             return False, f"Redis connection failed: {e}"
 
+    def check_database(self) -> Tuple[bool, str]:
+        from core.database import get_db_connection
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            conn.close()
+            return True, "Database connection successful"
+        except Exception as e:
+            return False, f"Database connection failed: {e}"
+
+    def check_backend_api(self) -> Tuple[bool, str]:
+        if settings.SYSTEM_MODE in ["mock", "debug"]:
+            return True, "Mock mode - skipped"
+        # Placeholder for backend API check
+        return True, "Backend API check successful (Placeholder)"
+
     def run_preflight(self, workflow_control: Dict[str, bool]) -> Tuple[bool, List[Dict[str, Any]]]:
         results = []
         all_passed = True

@@ -42,6 +42,28 @@ except redis.ConnectionError as e:
     logger.error(f"Worker connection failed: {e}")
     sys.exit(1)
 
+# --- Startup Health Checks ---
+from services.health_check import health_checker
+print("\n--- Running Startup Health Checks ---")
+
+checks = [
+    ("Active Directory", health_checker.check_ad),
+    ("PaperCut", health_checker.check_papercut),
+    ("Redis", health_checker.check_redis),
+    ("Graph API (M365)", health_checker.check_m365),
+    ("Database", health_checker.check_database),
+    ("Backend API", health_checker.check_backend_api)
+]
+
+for name, check_fn in checks:
+    ok, msg = check_fn()
+    icon = "[PASS]" if ok else "[FAIL]"
+    print(f"{icon} {name}: {msg}")
+    if not ok:
+        logger.warning(f"Startup check failed for {name}: {msg}")
+
+print("-------------------------------------\n")
+
 if __name__ == "__main__":
     if os.name == 'nt':
         from rq import SimpleWorker

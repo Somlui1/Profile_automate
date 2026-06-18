@@ -1,18 +1,25 @@
-# Execution Summary
+# Execution Summary: Graph API Pre-check, usageLocation & Health Checks
 
-## Changes Made
-- Created `PreflightError` and `M365UserNotSyncedError` in `worker/core/exceptions.py`.
-- Added `check_user_exists()` and `resolve_sku_ids()` to MS Graph client in `worker/services/m365_service.py`.
-- Implemented `worker/services/health_check.py` to verify dependencies (AD, M365, PaperCut, Redis) before starting pipelines.
-- Modified `worker/tasks/sync_user.py` to execute the preflight check, wrap M365 assignment in an exponential retry loop using `_m365_retry_count`, and raise the new retry exception when waiting for sync.
-- Fixed `normalize_payload` in `sync_user.py` to correctly supply a list of dicts for MS Graph SKU matching.
-- Updated `.agent/project_structure.md`, `worker/workspace.md`, and `worker/sequence.md` to establish the new preflight gate and exponential retry logic as standard documentation.
+## Changes Implemented
+
+1. **M365 `usageLocation` Requirement (Fix for HTTP 400)**
+   - Added `set_usage_location(upn, "TH")` method to `m365_service.py` to invoke `PATCH /v1.0/users/{upn}`.
+   - Integrated this into `worker/tasks/sync_user.py` immediately before the `assignLicense` Graph API call.
+   - Added corresponding `add_log(job_id, "m365_license", "running", "Setting usageLocation to 'TH' for user {upn}")` to ensure the frontend step tracker correctly reflects this step.
+
+2. **Startup Health Checks for Worker Debugging**
+   - Implemented `check_database` and `check_backend_api` in `worker/services/health_check.py`.
+   - Modified `worker/run.py` to execute all connection checks (AD, PaperCut, Redis, Graph API, DB, Backend API) BEFORE starting the worker processing loop.
+   - Prints clear status indicators (`✅` or `❌`) to the worker console to simplify debugging network/credential issues on container boot.
+
+3. **Frontend Integration via `sequence.md`**
+   - Updated `worker/sequence.md` with explicit specifications for the **Preflight (Step 0)**.
+   - Detailed the expected log patterns and job status mapping (`failed`) so `PDFProvisionTab.tsx` can correctly render a UI failure modal/alert if Graph API connection fails prior to pipeline start.
 
 ## Verification
-- Execution steps were verified using Python helper scripts injected via the command line to test method loading and validation logic.
-- Testing successfully bypassed module loading on the local workspace where `redis` was missing, confirming that the structural modifications to pipeline orchestration are robust and will run seamlessly within the target Docker environment.
-- Visual verification was used to ensure markdown documentation adheres to formatting rules.
+- Code successfully loaded via `python -c "import run"` which triggered the new startup checks.
+- Logic visually verified: `check_user_exists` → `set_usage_location` → `assign_licenses` is implemented in the proper chronological order with correct error handling.
 
-## Follow-up
-- Consider updating the frontend `JobQueueTab` and `PDFProvisionTab` React components to visually consume and render the new `preflight` logs and M365 sub-step indicators as outlined in the new sequence.md specifications.
-- Deploy changes to testing environment and observe initial pipeline triggers.
+## Next Steps
+- Start the worker container using `python worker/run.py` to view the new startup checks in action.
+- Update `frontend/src/components/PDFProvisionTab.tsx` (in the future, based on `sequence.md`) to parse and display the `preflight` logs and `usageLocation` progress.

@@ -91,6 +91,43 @@ class Microsoft365Service:
             logger.error(f"Failed to check user existence for {user_principal_name}: {e}")
             raise Exception(f"M365 User Existence Check Error: {e}")
 
+    def set_usage_location(self, user_principal_name: str, usage_location: str) -> bool:
+        """
+        Calls PATCH /v1.0/users/{upn} via MS Graph to set usageLocation.
+        """
+        if self.mock_mode:
+            logger.info(f"[Mock MS Graph] set_usage_location: Set {usage_location} for {user_principal_name}")
+            return True
+
+        token = self._get_access_token()
+        url = f"https://graph.microsoft.com/v1.0/users/{user_principal_name}"
+        payload = {"usageLocation": usage_location}
+        encoded_payload = json.dumps(payload).encode("utf-8")
+        
+        req = urllib.request.Request(
+            url,
+            data=encoded_payload,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            },
+            method="PATCH"
+        )
+        
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:
+                status_code = response.getcode()
+                if status_code in [200, 204]:
+                    logger.info(f"Successfully set usageLocation to {usage_location} for {user_principal_name}")
+                    return True
+                else:
+                    body = response.read().decode("utf-8")
+                    logger.error(f"MS Graph returned status code {status_code} on PATCH usageLocation: {body}")
+                    return False
+        except Exception as e:
+            logger.error(f"Failed to set usageLocation for {user_principal_name}: {e}")
+            raise Exception(f"M365 Set Usage Location API Error: {e}")
+
     def resolve_sku_ids(self, sku_list: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """
         Converts SKU dicts with 'skuPartNumber' to include 'skuId' by querying MS Graph.

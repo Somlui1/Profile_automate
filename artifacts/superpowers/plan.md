@@ -35,7 +35,7 @@ python -c "from core.exceptions import PreflightError, M365UserNotSyncedError; p
 
 ---
 
-### Step 2: เพิ่ม `check_user_exists()` และ `resolve_sku_ids()` ใน m365_service (5 นาที)
+### Step 2: เพิ่ม `check_user_exists()`, `set_usage_location()` และ `resolve_sku_ids()` ใน m365_service (5 นาที)
 
 **Files:** `worker/services/m365_service.py`
 
@@ -45,7 +45,10 @@ python -c "from core.exceptions import PreflightError, M365UserNotSyncedError; p
    - return `False` ถ้า HTTP 404 (user ไม่มี)
    - raise Exception ถ้า error อื่น (เช่น 401, 500)
    - Mock mode: return `True` เสมอ
-2. เพิ่ม method `resolve_sku_ids(sku_names)` — เรียก `GET /v1.0/subscribedSkus` แล้ว map `skuPartNumber` → `skuId`
+2. เพิ่ม method `set_usage_location(upn, usage_location)` — เรียก `PATCH /v1.0/users/{upn}` ผ่าน Graph API เพื่อตั้งค่า `usageLocation` (เป็น "TH") ก่อนการ assign licenses
+   - ส่ง body เป็น `{"usageLocation": usage_location}`
+   - Mock mode: print log และ return `True`
+3. เพิ่ม method `resolve_sku_ids(sku_names)` — เรียก `GET /v1.0/subscribedSkus` แล้ว map `skuPartNumber` → `skuId`
    - Input: `["STANDARDPACK", "EMS"]` (strings)
    - Output: `[{"skuId": "guid-...", "skuPartNumber": "STANDARDPACK"}, ...]`
    - Mock mode: return input แปลงเป็น dict format พร้อม mock GUID
@@ -54,6 +57,7 @@ python -c "from core.exceptions import PreflightError, M365UserNotSyncedError; p
 ```powershell
 cd c:\Users\wajeepradit.p\git\profile_automate\worker
 python -c "from services.m365_service import m365_service; print(m365_service.check_user_exists('test@aapico.com'))"
+python -c "from services.m365_service import m365_service; print(m365_service.set_usage_location('test@aapico.com', 'TH'))"
 python -c "from services.m365_service import m365_service; print(m365_service.resolve_sku_ids(['STANDARDPACK']))"
 ```
 
@@ -120,7 +124,8 @@ print('Preflight gate OK:', steps)
 3. ถ้า user ไม่มี:
    - ถ้า `retry_count >= MAX_RETRIES` → raise Exception พร้อมข้อความ actionable
    - ถ้ายังไม่ถึง max → เพิ่ม `payload["_m365_retry_count"]`, คำนวณ delay `60 * 2^retry_count` วินาที, `add_log` แจ้งสถานะ, เรียก `sync_queue.enqueue_in(delay, ...)` แล้ว **raise `M365UserNotSyncedError`** เพื่อบอก `_run_step` ว่าไม่ต้อง `move_to_next_step`
-4. ถ้า user มี → ดำเนินต่อ assign license ตามปกติ
+4. ถ้า user มี → ดำเนินต่อ assign license ตามปกติ:
+   - เพิ่มคำสั่ง `add_log(job_id, "m365_license", "running", f"Setting usageLocation to 'TH' for user {upn}")` ก่อนเรียก `m365_service.set_usage_location(upn, "TH")` เพื่อให้บันทึก log สอดคล้องกับ `sequence.md`
 
 ปรับ `_run_step()` (L85-96) ให้:
 - catch `M365UserNotSyncedError` แยกจาก Exception อื่น → ไม่ fail job, ไม่ move to next (เพราะ re-enqueue แล้ว)
@@ -197,6 +202,40 @@ Select-String -Path "c:\Users\wajeepradit.p\git\profile_automate\worker\sequence
 
 ---
 
+### Step 8: เพิ่มระบบตรวจสอบการเชื่อมต่อเมื่อเริ่มทำงาน (Worker Startup Check) (10 นาที)
+
+**Files:** `worker/run.py`, `worker/services/health_check.py`
+
+**Change:**
+1. ใน `worker/services/health_check.py` เพิ่ม method `check_database()` เพื่อรันคำสั่ง `SELECT 1` ตรวจสอบไฟล์ SQLite/DB
+2. ใน `worker/services/health_check.py` เพิ่ม method `check_backend_api()` เป็น Placeholder เพื่อเชื่อมต่อไปยัง Backend (ถ้ามี)
+3. ใน `worker/run.py` ก่อนที่จะเรียก `worker.work()` ให้เรียกใช้ฟังก์ชันตรวจสอบทั้งหมด (AD, Papercut, Redis, Graph API, Database, Backend API) ผ่าน `health_checker` 
+4. แสดงผลลัพธ์สถานะเชื่อมต่อออกทางหน้าจอ Console (✅ / ❌) เพื่อให้ตรวจสอบได้ง่ายเมื่อเริ่ม Worker Container
+
+**Verify:**
+```powershell
+cd c:\Users\wajeepradit.p\git\profile_automate\worker
+python run.py
+```
+
+---
+
+### Step 9: อัปเดต `sequence.md` ให้ครอบคลุม Graph API Connection (5 นาที)
+
+**Files:** `worker/sequence.md`
+
+**Change:**
+- อัปเดตตาราง Pipeline Sequence ให้มีกระบวนการแสดงผลการเชื่อมต่อ Graph API Token ให้ชัดเจน
+- เชื่อมโยงกับโค้ด `PDFProvisionTab.tsx` โดยการระบุ Message และ Status ที่ Frontend จะนำไปแสดงผลเมื่อ Graph API ล้มเหลวตั้งแต่ตอน Start Pipeline (Preflight)
+- เพิ่ม Log Recording Pattern สำหรับกรณีเชื่อมต่อ Graph API ไม่สำเร็จ
+
+**Verify:**
+```powershell
+Select-String -Path "c:\Users\wajeepradit.p\git\profile_automate\worker\sequence.md" -Pattern "Graph API"
+```
+
+---
+
 ## Risks & Mitigations
 
 | Risk | Likelihood | Impact | Mitigation |
@@ -206,6 +245,7 @@ Select-String -Path "c:\Users\wajeepradit.p\git\profile_automate\worker\sequence
 | Preflight false-positive (service ตอบช้าแต่ไม่ได้ตาย) | Low | Medium | ตั้ง timeout 5s ต่อ check, ไม่ retry ที่ preflight level |
 | `_run_step` catch logic ผิด — M365UserNotSyncedError ถูก treat เป็น failure | Medium | High | Unit test ยืนยันว่า re-enqueue ไม่ทำให้ job fail |
 | Mock mode regression (health check / pre-check ทำให้ mock mode พัง) | Low | High | ทุก method ต้อง check `self.mock_mode` ก่อน |
+| Worker ไม่สามารถ Start ได้หากตรวจสอบ Services ตอนเริ่มระบบไม่ผ่าน | Medium | High | ให้แสดงผลเตือน (Warning) ลง Console แต่ไม่ต้องหยุดการทำงาน (No Exit) เพื่อให้ Worker ยังคงทำงานต่อไปได้แม้บาง Service จะขัดข้องชั่วคราว |
 
 ## Rollback Plan
 
@@ -213,3 +253,4 @@ Select-String -Path "c:\Users\wajeepradit.p\git\profile_automate\worker\sequence
 2. **Disable preflight**: เพิ่ม env var `SKIP_PREFLIGHT=true` เพื่อ bypass health check ในกรณีฉุกเฉิน (จะเพิ่มไว้ใน Step 4 เป็น safety valve)
 3. **Disable M365 retry**: ตั้ง `MAX_RETRIES=0` ใน config เพื่อกลับเป็น behavior เดิม (try once, fail fast)
 4. **SKU format**: เป็น backward-compatible — `assign_licenses()` ยังรับ dict ที่มี `skuId` ได้ตามเดิม
+5. นำฟังก์ชัน Startup Check ออกจาก `run.py` หากรบกวนระยะเวลาในการ Boot ของ Worker

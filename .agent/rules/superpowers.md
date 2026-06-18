@@ -42,6 +42,9 @@ Before final response, do a review pass and list issues by severity:
 - Add timeouts, retries, and idempotency for API automations
 - Fail safe (no silent data loss)
 
+## 6) Formatting & Logging
+- **NO EMOJIS**: Do NOT use emojis in any codebase files, console output, or log messages. This is to ensure stable rendering across all consoles and log aggregators that may not fully support Unicode emojis. Use standard text prefixes (e.g. `[WARNING]`, `[FAILED]`, `[SUCCESS]`) instead.
+
 ## Artifact persistence (mandatory)
 Any brainstorm, plan, review, or finish output must be written to disk under:
 `artifacts/superpowers/`

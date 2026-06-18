@@ -24,35 +24,69 @@ To provide a premium and responsive user experience, the frontend must dynamical
 
 ### 2.1 Step 3 Progress & Sub-step States (M365 Licensing)
 
-For **Step 3 (`m365_license`)**, the UI renders sub-steps to handle the sync delay and retry mechanisms:
+For **Step 3 (`m365_license`)**, the UI renders sub-steps to handle the sync delay, user verification, SKU resolution, and license assignment:
 1. **Waiting for Azure AD Connect / Entra Cloud Sync (initial 5m delay + exponential retries)**
 2. **Checking user existence via Graph API**
-3. **Assigning Microsoft 365 licenses via Graph API**
+3. **Resolving License SKU GUIDs (Standardpack, EMS, etc.)**
+4. **Assigning Microsoft 365 licenses via Graph API**
 
 #### Progress State & Indicators
 * **STANDBY** (Queue hasn't reached this step yet):
   * Overall Step State: `STANDBY`
   * Sub-step 1: `STANDBY` (grey dot)
   * Sub-step 2: `STANDBY` (grey dot)
+  * Sub-step 3: `STANDBY` (grey dot)
+  * Sub-step 4: `STANDBY` (grey dot)
   * Progress percentage: `0%`
 * **WAITING FOR SYNC** (Enqueuing/delayed task):
-  * Log message trigger: Contains `"delayed"` or `"Enqueuing"`
+  * Log message trigger: Contains `"delayed"`, `"Enqueuing"`, or `"not yet synced"`
   * Overall Step State: `RUNNING`
   * Sub-step 1: `RUNNING` (blue flashing / pulsating dot)
   * Sub-step 2: `STANDBY` (grey dot)
-  * Progress percentage: `35%`
-* **ASSIGNING LICENSES** (Graph API call):
-  * Log message trigger: Contains `"Assigning"`
+  * Sub-step 3: `STANDBY` (grey dot)
+  * Sub-step 4: `STANDBY` (grey dot)
+  * Progress percentage: `25%`
+* **CHECKING USER EXISTENCE** (Checking user in Azure AD):
+  * Log message trigger: Contains `"exists in Azure AD"`
   * Overall Step State: `RUNNING`
   * Sub-step 1: `SUCCESS` (green dot / checkmark)
   * Sub-step 2: `RUNNING` (blue flashing / pulsating dot)
-  * Progress percentage: `70%`
+  * Sub-step 3: `STANDBY` (grey dot)
+  * Sub-step 4: `STANDBY` (grey dot)
+  * Progress percentage: `50%`
+* **RESOLVING SKUs** (Resolving SKU Part Numbers to GUIDs):
+  * Log message trigger: Contains `"found in Azure AD"` or `"Resolving SKUs"`
+  * Overall Step State: `RUNNING`
+  * Sub-step 1: `SUCCESS` (green dot)
+  * Sub-step 2: `SUCCESS` (green dot)
+  * Sub-step 3: `RUNNING` (blue flashing / pulsating dot)
+  * Sub-step 4: `STANDBY` (grey dot)
+  * Progress percentage: `75%`
+* **ASSIGNING LICENSES** (Graph API assignLicense call & setting usageLocation):
+  * Log message trigger: Contains `"Setting usageLocation"` or `"Assigning"`
+  * Overall Step State: `RUNNING`
+  * Sub-step 1: `SUCCESS` (green dot)
+  * Sub-step 2: `SUCCESS` (green dot)
+  * Sub-step 3: `SUCCESS` (green dot)
+  * Sub-step 4: `RUNNING` (blue flashing / pulsating dot)
+  * Progress percentage: `90%`
 * **COMPLETED**:
-  * Job/Step Status: `SUCCESS` (or log message contains `"Successfully"`)
+  * Job/Step Status: `SUCCESS` (or log message contains `"Successfully assigned"`)
   * Overall Step State: `SUCCESS`
   * Sub-step 1: `SUCCESS` (green dot)
   * Sub-step 2: `SUCCESS` (green dot)
+  * Sub-step 3: `SUCCESS` (green dot)
+  * Sub-step 4: `SUCCESS` (green dot)
   * Progress percentage: `100%`
+
+### 2.2 Step 0 Progress & State (Preflight Health Check)
+
+For **Step 0 (`preflight`)**, the worker verifies all connections before starting the pipeline.
+If the Graph API token retrieval fails:
+* **GRAPH API FAILURE**:
+  * Log message trigger: Contains `"Graph API Connection failed"` or `"M365 Auth failed"`
+  * Overall Job Status: `failed` or `cancelled`
+  * Action: Frontend should halt progress, display a failure alert, and prevent the pipeline from appearing to run.
 
 ---
 
@@ -100,9 +134,25 @@ To ensure the frontend correctly parses sub-step status, the worker MUST write l
    ```python
    add_log(job_id, "m365_license", "running", f"User {upn} found in Azure AD. Resolving SKUs and assigning licenses...")
    ```
-4. **When completed successfully:**
+4. **When setting usage location (Required before licensing):**
+   ```python
+   add_log(job_id, "m365_license", "running", f"Setting usageLocation to 'TH' for user {upn}")
+   ```
+5. **When completed successfully:**
    ```python
    add_log(job_id, "m365_license", "success", f"Successfully assigned {count} M365 licenses to user {username}")
+   ```
+
+### 3.4 Preflight Log Recording Pattern
+
+When checking the environment before starting the pipeline:
+1. **When all services are ready:**
+   ```python
+   add_log(job_id, "preflight", "success", "All services ready")
+   ```
+2. **When Graph API (or any service) fails:**
+   ```python
+   add_log(job_id, "preflight", "failed", "Graph API Connection failed during preflight check")
    ```
 
 ---

@@ -93,12 +93,18 @@ def _run_step(step_id: str, job_id: str, payload: dict, execute_fn):
     except Exception as e:
         from core.exceptions import M365UserNotSyncedError
         if getattr(e, '__class__', None) and e.__class__.__name__ == 'M365UserNotSyncedError' or isinstance(e, M365UserNotSyncedError):
-            logger.info(f"[{job_id}] Task {step_id} re-enqueued: {e}")
+            logger.warning(f"[WARNING] [{job_id}] Task '{step_id}' delayed/re-enqueued. Reason: {e}")
             return
 
-        logger.error(f"{step_id} task failed: {e}")
-        add_log(job_id, step_id, "failed", f"Error: {str(e)}")
-        update_job(job_id, status="failed", error=str(e))
+        import traceback
+        error_trace = traceback.format_exc()
+        error_msg = f"Step '{step_id}' failed: {str(e)}"
+        
+        logger.error(f"[FAILED] [{job_id}] {error_msg}")
+        logger.error(f"[TRACEBACK] [{job_id}] Exception Traceback:\n{error_trace}")
+        
+        add_log(job_id, step_id, "failed", error_msg)
+        update_job(job_id, status="failed", error=error_msg)
 
 def normalize_payload(payload: dict) -> dict:
     if "metadata" in payload or "task_data" in payload:
@@ -194,8 +200,11 @@ def run_sync_pipeline(job_id: str, payload: dict):
         add_log(job_id, "preflight", status, f"{r['service']}: {r['message']}")
     
     if not passed:
-        failed_services = [r['service'] for r in results if not r['passed']]
-        error_msg = f"Preflight failed: {', '.join(failed_services)} not reachable"
+        failed_services = [f"{r['service']} ({r['message']})" for r in results if not r['passed']]
+        error_msg = f"Preflight failed. Unreachable services: {', '.join(failed_services)}"
+        
+        logger.error(f"[PREFLIGHT FAILED] [{job_id}] {error_msg}")
+        
         update_job(job_id, status="cancelled", error=error_msg)
         add_log(job_id, "preflight", "failed", error_msg)
         return  # ❌ Cancel job — do not start pipeline
@@ -368,6 +377,10 @@ def _execute_m365_license(job_id: str, payload: dict):
     add_log(job_id, "m365_license", "running", f"User {upn} found in Azure AD. Resolving SKUs and assigning licenses...")
     
     sku_ids = m365_service.resolve_sku_ids(sku_ids) if sku_ids else []
+    
+    # Set usageLocation (Required by MS Graph before assigning licenses)
+    add_log(job_id, "m365_license", "running", f"Setting usageLocation to 'TH' for user {upn}")
+    m365_service.set_usage_location(upn, "TH")
     
     # Format licenses for display in logs
     log_skus = []
