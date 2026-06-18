@@ -21,6 +21,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy API backend source
 COPY api/ .
 
+# Copy steps_schema.json from worker directory
+COPY worker/steps_schema.json ./worker/steps_schema.json
+
 # Copy built frontend assets from Stage 1 into /app/frontend/dist
 COPY --from=frontend-builder /build/dist ./frontend/dist
 

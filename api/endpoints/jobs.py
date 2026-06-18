@@ -41,8 +41,14 @@ def create_sync_job(payload: UserSyncRequest):
 def get_steps_schema():
     import os
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(os.path.dirname(current_dir))
-    schema_path = os.path.join(project_root, "worker", "steps_schema.json")
+    
+    # In Docker: /app/endpoints/jobs.py -> /app/worker/steps_schema.json
+    docker_path = os.path.join(os.path.dirname(current_dir), "worker", "steps_schema.json")
+    # Local dev: /api/endpoints/jobs.py -> /worker/steps_schema.json
+    local_path = os.path.join(os.path.dirname(os.path.dirname(current_dir)), "worker", "steps_schema.json")
+    
+    schema_path = docker_path if os.path.exists(docker_path) else local_path
+    
     try:
         with open(schema_path, "r", encoding="utf-8") as f:
             return json.load(f)
