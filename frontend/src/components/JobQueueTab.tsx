@@ -486,8 +486,8 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
                                 )}
 
                                 <div className="space-y-3 relative pl-3">
-                                  {stepLogs.length > 0 ? (
-                                    stepLogs.map((log) => (
+                                  {stepLogs.filter((log) => !(log.metadata?.sub_step === 'verify' && log.status === 'running')).length > 0 ? (
+                                    stepLogs.filter((log) => !(log.metadata?.sub_step === 'verify' && log.status === 'running')).map((log) => (
                                       <div key={log.id} className="relative flex items-start gap-1 pb-1">
                                         <span className={`h-2 w-2 rounded-full absolute -left-3 top-1.5 ${log.status === 'success' ? 'bg-secondary' : log.status === 'failed' ? 'bg-error' : 'bg-primary animate-pulse'
                                           }`} />
