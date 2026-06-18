@@ -3,7 +3,7 @@ import urllib.request
 import urllib.parse
 import urllib.error
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from core.config import settings
 
 logger = logging.getLogger("app.services.m365_service")
@@ -136,6 +136,37 @@ class Microsoft365Service:
         except Exception as e:
             logger.error(f"Failed to set usageLocation for {user_principal_name}: {e}")
             raise Exception(f"M365 Set Usage Location API Error: {e}")
+
+    def get_user_usage_location(self, user_principal_name: str) -> Optional[str]:
+        """
+        Retrieves the usageLocation for a user from Microsoft Graph.
+        """
+        if self.mock_mode:
+            return "TH"
+
+        token = self._get_access_token()
+        url = f"https://graph.microsoft.com/v1.0/users/{user_principal_name}?$select=usageLocation"
+        
+        req = urllib.request.Request(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            },
+            method="GET"
+        )
+        
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:
+                res = json.loads(response.read().decode("utf-8"))
+                return res.get("usageLocation")
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode("utf-8")
+            logger.error(f"Failed to fetch usageLocation for {user_principal_name}: {e} - Detail: {error_body}")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to fetch usageLocation for {user_principal_name}: {e}")
+            return None
 
     def resolve_sku_ids(self, sku_list: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """

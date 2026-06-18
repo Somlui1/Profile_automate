@@ -355,26 +355,27 @@ def _execute_m365_license(job_id: str, payload: dict):
     
     upn = ad_profile.get("custom_attributes", {}).get("user_principal_name") or f"{username}@aapico.com"
     
-    retry_count = payload.get("_m365_retry_count", 0)
-    MAX_RETRIES = 6
+    # Check if user exists in Azure AD, retry via scheduler up to 3 times (4 total checks) with 2-minute delays
+    retry_count = payload.get("_m365_sync_retry_count", 0)
+    MAX_RETRIES = 3
     
     add_log(job_id, "m365_license", "running", f"Checking if user {upn} exists in Azure AD (attempt {retry_count + 1}/{MAX_RETRIES + 1})")
     
     if not m365_service.check_user_exists(upn):
         if retry_count >= MAX_RETRIES:
-            raise Exception(f"User {upn} not found in Azure AD after {MAX_RETRIES + 1} attempts (~30 min). Please check Azure AD Connect sync status.")
+            raise Exception(f"[FAILED] User {upn} not found in Azure AD after {MAX_RETRIES} scheduler retries (2 minutes each). Sync check failed.")
             
-        delay = timedelta(seconds=60 * (2 ** retry_count))
-        payload["_m365_retry_count"] = retry_count + 1
+        delay = timedelta(minutes=2)
+        payload["_m365_sync_retry_count"] = retry_count + 1
         
-        msg = f"User {upn} not yet synced to Azure AD. Retrying in {delay}..."
+        msg = f"User {upn} not yet synced to Azure AD. Rescheduling check via scheduler in 2 minutes..."
         add_log(job_id, "m365_license", "running", msg)
         sync_queue.enqueue_in(delay, "tasks.sync_user.run_m365_license_task", job_id, payload)
         
         from core.exceptions import M365UserNotSyncedError
         raise M365UserNotSyncedError(msg)
     
-    add_log(job_id, "m365_license", "running", f"User {upn} found in Azure AD. Resolving SKUs and assigning licenses...")
+    add_log(job_id, "m365_license", "running", f"User {upn} found in Azure AD. Resolving SKUs...")
     
     sku_ids = m365_service.resolve_sku_ids(sku_ids) if sku_ids else []
     
@@ -382,6 +383,23 @@ def _execute_m365_license(job_id: str, payload: dict):
     add_log(job_id, "m365_license", "running", f"Setting usageLocation to 'TH' for user {upn}")
     m365_service.set_usage_location(upn, "TH")
     
+    # Verify usageLocation has propagated in Azure AD (loop up to 5 times, 3s delay each)
+    verified = False
+    for verify_attempt in range(5):
+        current_loc = m365_service.get_user_usage_location(upn)
+        if current_loc == "TH":
+            verified = True
+            logger.info(f"[{job_id}] Verified usageLocation is set to 'TH' (attempt {verify_attempt + 1}/5)")
+            break
+        logger.info(f"[{job_id}] Verification of usageLocation is still pending... waiting 3 seconds (attempt {verify_attempt + 1}/5)")
+        time.sleep(3)
+        
+    if not verified:
+        logger.warning(f"[WARNING] [{job_id}] Could not verify usageLocation 'TH' via API within 15 seconds. Proceeding to assign licenses as fallback.")
+        add_log(job_id, "m365_license", "running", "Warning: usageLocation verification timed out, proceeding to assign licenses")
+    else:
+        add_log(job_id, "m365_license", "running", "Verified usageLocation set to 'TH'")
+
     # Format licenses for display in logs
     log_skus = []
     for sku in sku_ids:
@@ -400,7 +418,7 @@ def _execute_m365_license(job_id: str, payload: dict):
             m365_service.assign_licenses(upn, sku_ids)
             break
         except Exception as e:
-            is_propagation_error = "licenseassignmentcannotbedoneforuserwithnousagelocationspecified" in str(e).lower().replace(" ", "")
+            is_propagation_error = "usage location" in str(e).lower() or "usagelocationspecified" in str(e).lower()
             if is_propagation_error and attempt < max_assign_attempts - 1:
                 retry_delay = 5 * (attempt + 1)
                 logger.warning(f"[WARNING] [{job_id}] License assignment failed due to usageLocation propagation delay. Retrying in {retry_delay} seconds (attempt {attempt + 1}/{max_assign_attempts})...")
