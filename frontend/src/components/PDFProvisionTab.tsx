@@ -218,9 +218,17 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     return Math.round((completed / total) * 100);
   };
 
+  const ICON_MAP: Record<string, React.ElementType> = {
+    UserCheck,
+    Printer,
+    Cloud,
+    Mail,
+    Database,
+    Hourglass
+  };
+
   const renderDynamicIcon = (iconName: string, state: string) => {
-    const LucideIcons: any = require('lucide-react');
-    const Icon = LucideIcons[iconName] || LucideIcons.HelpCircle;
+    const Icon = ICON_MAP[iconName] || HelpCircle;
     if (state === 'RUNNING') return <Loader2 className="h-5 w-5 animate-spin" />;
     if (state === 'SUCCESS') return <Check className="h-5 w-5 font-bold text-secondary" />;
     if (state === 'SKIPPED') return <Check className="h-5 w-5 font-bold text-slate-500" />;

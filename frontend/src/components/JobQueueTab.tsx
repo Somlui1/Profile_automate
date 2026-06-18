@@ -58,9 +58,17 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
     fetchStepsSchema();
   }, []);
 
-  const LucideIcons: any = require('lucide-react');
+  const ICON_MAP: Record<string, React.ElementType> = {
+    UserCheck,
+    Printer,
+    Cloud,
+    Mail,
+    Database,
+    Hourglass
+  };
+
   const getIconComponent = (iconName: string) => {
-    const Icon = LucideIcons[iconName] || LucideIcons.HelpCircle;
+    const Icon = ICON_MAP[iconName] || HelpCircle;
     return <Icon className="h-3.5 w-3.5" />;
   };
 

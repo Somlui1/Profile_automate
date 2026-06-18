@@ -1,0 +1,2 @@
+# Ignore temp scripts folder for AI reading context to save tokens
+temp/
