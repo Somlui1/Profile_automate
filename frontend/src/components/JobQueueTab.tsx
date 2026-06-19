@@ -485,22 +485,31 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
                                   </div>
                                 )}
 
-                                <div className="space-y-3 relative pl-3">
-                                  {stepLogs.filter((log) => !(log.metadata?.sub_step === 'verify' && log.status === 'running')).length > 0 ? (
-                                    stepLogs.filter((log) => !(log.metadata?.sub_step === 'verify' && log.status === 'running')).map((log) => (
-                                      <div key={log.id} className="relative flex items-start gap-1 pb-1">
-                                        <span className={`h-2 w-2 rounded-full absolute -left-3 top-1.5 ${log.status === 'success' ? 'bg-secondary' : log.status === 'failed' ? 'bg-error' : 'bg-primary animate-pulse'
-                                          }`} />
-                                        <div className="min-w-0">
-                                          <p className="font-bold text-slate-800 leading-tight break-words">{log.message}</p>
-                                          <p className="text-[9px] text-outline font-semibold mt-0.5">{formatShortTime(log.timestamp)}</p>
+                                <details 
+                                  className="group mt-2"
+                                  open={stepLogs.some(log => log.status === 'failed')}
+                                >
+                                  <summary className="text-[10px] font-bold text-outline hover:text-primary uppercase cursor-pointer list-none flex items-center gap-1.5 select-none transition-colors mb-3">
+                                    <ChevronDown className="h-3 w-3 group-open:-rotate-180 transition-transform duration-200" />
+                                    <span>Detailed Execution Logs ({stepLogs.length})</span>
+                                  </summary>
+                                  <div className="space-y-3 relative pl-3 border-l-2 border-outline-variant/30 ml-1.5">
+                                    {stepLogs.filter((log) => !(log.metadata?.sub_step === 'verify' && log.status === 'running')).length > 0 ? (
+                                      stepLogs.filter((log) => !(log.metadata?.sub_step === 'verify' && log.status === 'running')).map((log) => (
+                                        <div key={log.id} className="relative flex items-start gap-1 pb-1">
+                                          <span className={`h-2 w-2 rounded-full absolute -left-[17px] top-1.5 ring-4 ring-slate-50 ${log.status === 'success' ? 'bg-secondary' : log.status === 'failed' ? 'bg-error' : 'bg-primary animate-pulse'
+                                            }`} />
+                                          <div className="min-w-0">
+                                            <p className="font-bold text-slate-800 leading-tight break-words">{log.message}</p>
+                                            <p className="text-[9px] text-outline font-semibold mt-0.5">{formatShortTime(log.timestamp)}</p>
+                                          </div>
                                         </div>
-                                      </div>
-                                    ))
-                                  ) : (
-                                    <div className="text-outline-variant italic">Waiting sequence...</div>
-                                  )}
-                                </div>
+                                      ))
+                                    ) : (
+                                      <div className="text-outline-variant italic text-[10px]">Waiting sequence...</div>
+                                    )}
+                                  </div>
+                                </details>
                               </div>
                             );
                           })}

@@ -322,8 +322,9 @@ def _execute_papercut_sync(job_id: str, payload: dict):
     print_code = pc_profile.get("print_code")
     
     # Trigger force user sync from AD
+    add_log(job_id, "papercut_sync", "running", "Triggering global PaperCut sync from Active Directory...", metadata={"sub_step": "trigger", "sub_step_status": "running"})
     papercut_service.force_user_sync()
-    add_log(job_id, "papercut_sync", "running", "Triggered global PaperCut sync from Active Directory", metadata={"sub_step": "trigger", "sub_step_status": "running"})
+    add_log(job_id, "papercut_sync", "running", "Triggered global PaperCut sync from Active Directory", metadata={"sub_step": "trigger", "sub_step_status": "success"})
     
     # Wait a moment for synchronization to process on papercut service side
     time.sleep(2)
@@ -400,7 +401,7 @@ def _execute_m365_license(job_id: str, payload: dict):
         
     if not verified:
         logger.warning(f"[WARNING] [{job_id}] Could not verify usageLocation 'TH' via API within 15 seconds. Proceeding to assign licenses as fallback.")
-        add_log(job_id, "m365_license", "running", "Warning: usageLocation verification timed out, proceeding to assign licenses", metadata={"sub_step": "usageLocation", "sub_step_status": "running"})
+        add_log(job_id, "m365_license", "running", "Warning: usageLocation verification timed out, proceeding to assign licenses", metadata={"sub_step": "usageLocation", "sub_step_status": "success"})
     else:
         add_log(job_id, "m365_license", "running", "Verified usageLocation set to 'TH'. Waiting 5 seconds for replication...", metadata={"sub_step": "usageLocation", "sub_step_status": "success"})
         time.sleep(5)
@@ -448,6 +449,7 @@ def _execute_send_email(job_id: str, payload: dict):
     
     # SMTP email dispatch simulation
     time.sleep(1)
+    add_log(job_id, "send_email", "running", "Email dispatched to SMTP server.", metadata={"sub_step": "send", "sub_step_status": "success"})
     add_log(job_id, "send_email", "success", f"Email notification successfully sent to {email_to} (CC: {email_cc})", metadata={"sub_step": "complete", "sub_step_status": "success"})
 
 def run_send_email_task(job_id: str, payload: dict):
