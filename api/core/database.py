@@ -6,15 +6,25 @@ import os
 from typing import Dict, Any, List, Optional
 from core.config import settings
 
-def get_db_connection():
+_db_initialized = False
+
+def get_db_connection(init_check: bool = True):
     # Ensure data directory exists
     os.makedirs(os.path.dirname(settings.DB_PATH), exist_ok=True)
     conn = sqlite3.connect(settings.DB_PATH, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    
+    global _db_initialized
+    if init_check and not _db_initialized:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'")
+        if not cursor.fetchone():
+            _create_tables(conn)
+        _db_initialized = True
+        
     return conn
 
-def init_db():
-    conn = get_db_connection()
+def _create_tables(conn):
     cursor = conn.cursor()
     
     # Create jobs table
@@ -48,6 +58,10 @@ def init_db():
     ''')
     
     conn.commit()
+
+def init_db():
+    conn = get_db_connection(init_check=False)
+    _create_tables(conn)
     conn.close()
 
 def create_job(payload: Dict[str, Any], created_by: str = "admin") -> str:

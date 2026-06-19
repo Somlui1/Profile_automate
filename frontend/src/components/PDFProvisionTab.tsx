@@ -888,7 +888,8 @@ const handleNameTyping = (first: string, last: string) => {
   // --- PAYLOAD CONSTRUCTION ---
   const buildProvisionPayload = () => {
     const calculatedPin = printCode || mobile.replace(/\D/g, '').slice(-6) || description || "N/A";
-    const hasPrintCode = !!printCode && printCode.trim() !== "";
+    const finalPrintCode = calculatedPin !== "N/A" ? calculatedPin : "";
+    const hasPrintCode = finalPrintCode !== "";
     const hasLicenses = selectedSkuIds.length > 0;
     const hasEmailSend = !!sendWelcomeEmailToggle;
 
@@ -952,7 +953,7 @@ const handleNameTyping = (first: string, last: string) => {
           }
         },
         papercut_profile: {
-          print_code: printCode
+          print_code: finalPrintCode
         },
         microsoft_365_licenses: {
           SkuId_id: selectedSkuIds.map((partNumber) => {
