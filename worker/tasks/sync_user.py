@@ -292,30 +292,43 @@ def _execute_ad_creation(job_id: str, payload: dict):
         add_log(job_id, "ad_creation", "success", f"Created AD account in {ad_dn}", metadata={"sub_step": "naming", "sub_step_status": "success"})
         
     # Validate properties in Active Directory
-    expected_props = {
-        "first_name": custom_attrs.get("first_name") or "",
-        "last_name": custom_attrs.get("last_name") or "",
-        "display_name": custom_attrs.get("display_name") or "",
-        "description": custom_attrs.get("description") or "",
-        "office": custom_attrs.get("office") or "",
-        "telephone_number": custom_attrs.get("telephone_number") or "",
-        "email": custom_attrs.get("email") or ad_user_details.get("email", ""),
-        "mobile": custom_attrs.get("mobile") or ad_user_details.get("mobile_phone", ""),
-        "title": custom_attrs.get("title") or ad_user_details.get("position", ""),
-        "department": custom_attrs.get("department") or ad_user_details.get("department", ""),
-        "company": custom_attrs.get("company") or ad_user_details.get("company", ""),
-        "employee_id": custom_attrs.get("employee_id") or ad_user_details.get("employee_id", ""),
-        "user_principal_name": custom_attrs.get("user_principal_name") or "",
-        "password_never_expires": custom_attrs.get("password_never_expires", False),
-        "account_disabled": custom_attrs.get("account_disabled", False),
-        "change_password_next_logon": custom_attrs.get("change_password_next_logon", True),
-    }
+    expected_props = {k: v for k, v in custom_attrs.items() if k != 'password'}
     
-    optional_fields = ["street", "post_office_box", "city", "state_province", "zip_postal_code", "country_region", 
-                       "logon_script", "home_phone", "notes", "manager", "groups"]
-    for field in optional_fields:
-        if field in custom_attrs:
-            expected_props[field] = custom_attrs[field]
+    first_name_ext, last_name_ext = ad_service.extract_first_last_name(req_info.get("name_english", ""))
+    company_ext = req_info.get("company", "")
+    ext_val = req_info.get("ext", "")
+    default_display_name = f"{req_info.get('name_english', '')} ({company_ext})" if company_ext else req_info.get('name_english', '')
+    default_telephone_number = f"035-350880 ext.{ext_val}" if ext_val else ""
+    default_email = f"{username}@{company_ext.lower() if company_ext else 'company'}.com"
+
+    def apply_default(key, default):
+        if key not in expected_props or expected_props[key] is None or expected_props[key] == "":
+            expected_props[key] = default
+
+    apply_default("first_name", first_name_ext)
+    apply_default("last_name", last_name_ext)
+    apply_default("display_name", default_display_name)
+    apply_default("description", req_info.get("employee_id", ""))
+    apply_default("office", company_ext)
+    apply_default("telephone_number", default_telephone_number)
+    apply_default("email", default_email)
+    apply_default("city", "Ban Len, Bang pa-in")
+    apply_default("state_province", "Phranakhon Sri Ayutthaya")
+    apply_default("zip_postal_code", "13160")
+    apply_default("country_region", "Thailand")
+    apply_default("mobile", req_info.get("mobile_phone", ""))
+    apply_default("title", req_info.get("position", ""))
+    apply_default("department", req_info.get("department", ""))
+    apply_default("company", company_ext)
+    apply_default("employee_id", req_info.get("employee_id", ""))
+    apply_default("user_principal_name", f"{username}@aapico.com")
+    
+    if "password_never_expires" not in expected_props:
+        expected_props["password_never_expires"] = False
+    if "account_disabled" not in expected_props:
+        expected_props["account_disabled"] = False
+    if "change_password_next_logon" not in expected_props:
+        expected_props["change_password_next_logon"] = True
             
     val_success, passes, failures = ad_service.validate_user(username, expected_props)
     if val_success:

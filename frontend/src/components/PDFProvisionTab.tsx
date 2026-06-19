@@ -947,7 +947,8 @@ const handleNameTyping = (first: string, last: string) => {
             change_password_next_logon: true,
             account_disabled: false,
             password: "P@ssw0rd$",
-            user_principal_name: email
+            user_principal_name: email,
+            groups: adGroupsAssigned.map((g) => g.name)
           }
         },
         papercut_profile: {
