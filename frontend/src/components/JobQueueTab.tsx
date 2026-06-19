@@ -464,6 +464,15 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
                               }
                             });
 
+                            // Override RUNNING states if the job is failed or cancelled
+                            if (status === 'failed' || status === 'cancelled') {
+                              Object.keys(subStates).forEach(key => {
+                                if (subStates[key] === 'RUNNING') {
+                                  subStates[key] = 'FAILED';
+                                }
+                              });
+                            }
+
                             return (
                               <div key={step.key} className="space-y-4">
                                 <h4 className="font-bold text-xs text-primary uppercase border-b pb-1.5 mb-2 flex items-center gap-1.5">

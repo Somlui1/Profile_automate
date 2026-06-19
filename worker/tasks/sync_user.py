@@ -103,7 +103,20 @@ def _run_step(step_id: str, job_id: str, payload: dict, execute_fn):
         logger.error(f"[FAILED] [{job_id}] {error_msg}")
         logger.error(f"[TRACEBACK] [{job_id}] Exception Traceback:\n{error_trace}")
         
-        add_log(job_id, step_id, "failed", error_msg)
+        failed_metadata = None
+        try:
+            from core.database import get_logs
+            logs = get_logs(job_id)
+            step_logs = [l for l in logs if l.get("step") == step_id]
+            if step_logs:
+                last_log = step_logs[-1]
+                meta = last_log.get("metadata") or {}
+                if meta.get("sub_step_status") == "running" and meta.get("sub_step"):
+                    failed_metadata = {"sub_step": meta.get("sub_step"), "sub_step_status": "failed"}
+        except Exception as meta_e:
+            logger.warning(f"[WARNING] [{job_id}] Could not resolve failed sub_step metadata: {meta_e}")
+            
+        add_log(job_id, step_id, "failed", error_msg, metadata=failed_metadata)
         update_job(job_id, status="failed", error=error_msg)
 
 def normalize_payload(payload: dict) -> dict:
@@ -268,6 +281,7 @@ def _execute_ad_creation(job_id: str, payload: dict):
     else:
         # Create user in Active Directory
         is_contractor = payload.get("is_contractor", False)
+        add_log(job_id, "ad_creation", "running", f"Creating AD account for {username}...", metadata={"sub_step": "naming", "sub_step_status": "running"})
         success, ad_dn = ad_service.create_user(
             ad_user_details,
             is_contractor=is_contractor,

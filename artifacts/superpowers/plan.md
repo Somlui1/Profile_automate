@@ -1,31 +1,25 @@
-# 📝 Implementation Plan: JobQueueTab Sub-steps Rendering
-
 ## Goal
-ปรับปรุงคอมโพเนนต์ `JobQueueTab.tsx` ในฝั่ง Frontend เพื่อนำการแสดงผล Sub-steps กลับมาแสดงบน UI และปรับข้อความ/โครงสร้างให้สอดคล้องกับ `worker/workspace.md` โดยจะไม่ทำการแก้ไข Backend/Database และใช้ข้อมูล log เดิมในการจับคู่ (Map) สถานะของ Sub-steps
+Implement the Hybrid Approach to ensure accurate UI status reflection when exceptions occur during job execution. The UI and backend logs must correctly mark any active "running" sub-step as "failed" when a job crashes or is cancelled.
 
 ## Assumptions
-- โครงสร้างของข้อมูลจาก Database Log ที่ได้จาก API ยังคงส่ง `metadata.sub_step` และ `metadata.sub_step_status` กลับมาเหมือนเดิม
-- ปัญหาปัจจุบันคือ ฟังก์ชันการดึงค่า API `fetchSteps` ถูกแก้ไขผิดพลาด (`Array.isArray(data)` ทำให้ไม่ได้ดึงข้อมูล schema มาใช้) รวมทั้งบล็อกโค้ดสำหรับแสดงผล Sub-steps ถูกลบไป
-- การแก้ไขจะทำเฉพาะไฟล์ `frontend/src/components/JobQueueTab.tsx` ไฟล์เดียว
+- The database schema for `add_log` allows passing `metadata` arguments.
+- In `sync_user.py`, `get_job_logs(job_id)` or a similar function can be used to retrieve the current logs for the job to determine the last active sub-step.
+- The UI mapping logic in `JobQueueTab.tsx` evaluates sub-step states sequentially based on the cache.
 
 ## Plan
-
-### Step 1: Fix Schema Fetching and Default State
+### Step 1: Update Frontend Override Logic
 - **Files**: `frontend/src/components/JobQueueTab.tsx`
-- **Change**: 
-  - แก้ไขฟังก์ชัน `fetchSteps` ให้อ่านค่า `data.steps` แทนที่จะเช็ค `Array.isArray(data)`
-  - ปรับค่าเริ่มต้น (Initial State) ของ `stepsSchema` ให้มี `sub_steps` ที่สอดคล้องกับ `worker/workspace.md` เพื่อใช้เป็น Fallback ได้ทันที
+- **Change**: After `stepLogs.forEach` calculates the `subStates`, add a check: if the overall job `status === 'failed'` or `'cancelled'`, iterate over `subStates` and change any state that is `'RUNNING'` to `'FAILED'`. 
+- **Verify**: Inspect `JobQueueTab.tsx` to ensure the override logic exists before rendering the `sub_steps.map`.
 
-### Step 2: Restore Sub-steps Logic & Rendering
-- **Files**: `frontend/src/components/JobQueueTab.tsx`
-- **Change**: 
-  - เพิ่มโค้ดที่ใช้ดึงสถานะ Sub-step จาก log `jobLogsCache` เช่น `subStates[log.metadata.sub_step] = log.metadata.sub_step_status.toUpperCase()` กลับเข้ามาในลูปเรนเดอร์ของ Log panel
-  - เพิ่ม UI (JSX) ในการเรนเดอร์ `<div className="mb-3 p-2.5 bg-white ...">` เพื่อแสดงจุดไข่ปลา (Dots) และชื่อของแต่ละ Sub-step สำหรับแต่ละขั้นตอนหลัก
-- **Verify**: รัน `npm run build` และ `npx tsc --noEmit` ที่โฟลเดอร์ frontend เพื่อให้แน่ใจว่าไม่มี Type error และคอมไพล์ผ่าน
+### Step 2: Implement Backend Log Accuracy
+- **Files**: `worker/tasks/sync_user.py`
+- **Change**: In the `_run_step` exception handler, query the database or just use the last log state if tracked, to find the last `sub_step` that was marked `running`. Then inject `metadata={"sub_step": last_sub_step, "sub_step_status": "failed"}` into the `add_log` call for the failure message. 
+- **Verify**: Check that `add_log` in the `except` block now receives the correct metadata dictionary identifying the failed sub-step.
 
 ## Risks & mitigations
-- *ความเสี่ยง*: ชื่อ `key` ของ `sub_steps` ที่ Backend ส่งมาทาง metadata อาจจะไม่ตรงกับที่ระบุใน State
-- *วิธีป้องกัน*: จะยังคงใช้ `key` ตามระบบเดิม แต่ปรับปรุงข้อความ `display_name` ให้ตรงกับความหมายใน `workspace.md` มากที่สุดเพื่อลดผลกระทบของการ Mapping
+- **Risk**: Backend exception handler fails to query logs or determine the active sub-step, crashing the error handler itself.
+- **Mitigation**: Wrap the sub-step discovery logic in a `try...except` block so that if it fails, it defaults to the original generic failure log without metadata.
 
 ## Rollback plan
-- ใช้คำสั่ง `git checkout HEAD frontend/src/components/JobQueueTab.tsx` เพื่อย้อนโค้ดกลับไปก่อนการแก้ไข
+- Revert the changes in `JobQueueTab.tsx` and `sync_user.py` to their previous states using Git or undoing the exact chunk modifications.

@@ -1,37 +1,32 @@
 ## Goal
-ระบุสาเหตุที่จุดไข่ปลาสถานะ "Creating Account", "Microsoft 365" และ "Welcome Email" ยังเป็นสีเทา (STANDBY) บนหน้า UI ถึงแม้ว่าจะลบ Database บน Server แล้วก็ตาม
+Ensure end-to-end reliability of the provisioning pipeline's logging and UI status reflection. Specifically, guarantee that if a job fails or throws an exception in the backend (`sync_user.py`), the Frontend (`JobQueueTab.tsx`) perfectly reflects this state (e.g., stopping the "running" pulse and marking the specific sub-step as "failed") without visual discrepancies, using `steps_schema.json` as the structural bridge.
 
 ## Constraints
-- ต้องอธิบายให้ชัดเจนว่าปัญหาแต่ละจุดไข่ปลาเกิดขึ้นจากเงื่อนไขในโค้ด (Logic flow) ไม่ใช่บั๊กของ Database
-- ต้องเสนอทางออกในการแก้โค้ด Python (worker/tasks/sync_user.py) เพื่อให้ส่ง State ได้ครบถ้วน
+- Must rely on `worker/steps_schema.json` as the standard schema mapping for steps and sub-steps.
+- UI state rendering strictly depends on parsing the `sub_step_status` from the latest transactional log of each `sub_step`.
+- Exception blocks in `sync_user.py` currently emit a generic step-level "failed" log, but do not specify which `sub_step` failed in the metadata. This leaves the latest sub-step log as "running", causing infinite pulsing in the UI.
 
 ## Known context
-หลังจากตรวจสอบ Log ที่ถูกส่งออกมาจาก API อย่างละเอียด พบว่า Database **ทำงานได้สมบูรณ์แบบแล้ว** และ `metadata` ก็ถูกส่งมายัง Frontend ได้อย่างถูกต้อง แต่ที่มันยังเป็นสีเทา เกิดจากสาเหตุดังต่อไปนี้:
-
-1. **"Creating Account" (ad_creation -> naming)** เป็นสีเทา:
-   - เนื่องจากคุณใช้ User `aduc.test` ซึ่งมีอยู่ในระบบอยู่แล้ว โค้ดใน `sync_user.py` บรรทัดที่ 262 จึงเข้าเงื่อนไข `User already exists. Skipping creation.`
-   - เมื่อมัน Skip มันทำการเขียน Log `sub_step: connect` เป็น success แต่ **ไม่ได้เขียน Log สำหรับ `sub_step: naming` เลย!** 
-   - พอ Frontend ไม่ได้รับข้อมูลของ `naming` มันจึงค้างสถานะไว้ที่ STANDBY (สีเทา) ตามค่าเริ่มต้น
-
-2. **"Microsoft 365" (m365_license)** เป็นสีเทาทั้งยวง:
-   - เป็นความตั้งใจของระบบ! ใน Log ระบุว่า `"Enqueuing m365_license task with a delay of 0:06:05"` 
-   - ระบบถูกหน่วงเวลาไว้ 6 นาทีกว่าๆ เพื่อรอให้ Azure AD Sync สมบูรณ์ก่อน ทำให้ตอนนี้ยังไม่มี Log การรันใดๆ โผล่มา จุดเลยเป็นสีเทาเพราะมันยังไม่ถึงคิวรันครับ
-
-3. **"Welcome Email"** เป็นสีเหลือง (Skipped):
-   - ใน Payload ระบุว่า `"enable_send_email": false` ระบบจึงขึ้นสถานะ Skipped ให้ทั้งยวงอย่างถูกต้องแล้ว
+- The UI derives sub-step statuses dynamically: `subStates[log.metadata.sub_step] = (log.metadata.sub_step_status || 'RUNNING').toUpperCase();`
+- When an exception occurs in `sync_user.py`, `update_job(job_id, status="failed")` is called and a failed log is added, but it lacks the `metadata` tag pointing to the exact `sub_step` that crashed.
+- Because of this missing metadata, the Frontend UI does not override the sub-step state, resulting in a visual bug where the overall job is marked Failed (red), but the sub-step continues to Pulse (blue).
 
 ## Risks
-- หากปล่อยโค้ด `sync_user.py` ไว้แบบเดิม เวลาที่ Pipeline เจอ User ที่มีอยู่แล้ว มันก็จะ Skip การสร้าง ทำให้ UI เป็นสีเทาค้างตลอดไป สร้างความสับสนให้กับผู้ใช้งานได้
-- ผู้ใช้อาจคิดว่าระบบพังหรือค้าง ทั้งที่ความจริงมันทำงานสำเร็จแล้ว
+- Modifying the backend exception handler to guess the failed `sub_step` might result in inaccurate logs if the context isn't passed down carefully.
+- Overriding state purely in the Frontend might mask underlying logging issues, making debugging harder for developers reading the raw database logs.
+- Discrepancies between the backend's hardcoded step strings and `steps_schema.json` can cause steps to vanish or misalign in the UI.
 
 ## Options (2–4)
-1. **[อัปเดตโค้ด sync_user.py] (Recommended)**: เพิ่มคำสั่ง `add_log` สำหรับ `sub_step: naming` เป็นสถานะ `success` หรือ `skipped` ต่อท้ายบรรทัดที่ทำการ Skip creation เพื่อให้ Frontend มีข้อมูลมาระบายสีจุดไข่ปลา
-2. **[แก้ Frontend]**: ให้ Frontend ฉลาดขึ้น ถ้าหาก Step หลัก (`ad_creation`) เป็น `success` ไปแล้ว ให้บังคับเปลี่ยนทุกจุดย่อยให้เป็นสีเขียวไปเลยโดยไม่ต้องรอ Log ย่อย (เสี่ยงต่อการหลอกผู้ใช้ในกรณีที่มี Error โผล่มากลางคัน)
+1. **Frontend Override (UI Resilience):** Modify `JobQueueTab.tsx` so that if the overall job `status === 'failed'`, any sub-step currently evaluated as `RUNNING` in `subStates` is automatically forced to display as `FAILED`. This guarantees no infinite pulsing regardless of backend log quality.
+2. **Backend Context Tracking (Log Accuracy):** Modify `sync_user.py` to track the `current_sub_step` in a variable. When an exception is caught in `_run_step`, use this variable to inject `metadata={"sub_step": current_sub_step, "sub_step_status": "failed"}` into the final error log.
+3. **Hybrid Approach (Recommended):** Implement both. Use backend context tracking for clean, accurate database logs, and implement a frontend fallback override to guarantee UI consistency even if a hard crash prevents the backend from logging properly.
 
 ## Recommendation
-**Option 1: อัปเดตโค้ด sync_user.py**
-ควรแก้ที่ต้นทางโดยการพิมพ์ Log แจ้งว่าข้ามการสร้าง Account เพื่อให้สอดคล้องกับโครงสร้าง Schema มากที่สุด
+Implement the **Hybrid Approach**. 
+- In `JobQueueTab.tsx`, update the mapping logic: if `job.status === 'failed'` and a sub-step is `RUNNING`, set its visual state to `FAILED`. 
+- In `sync_user.py`, ensure that when an exception is caught, we attempt to resolve the last active sub-step and log it as `failed` so the database remains fully accurate.
 
 ## Acceptance criteria
-- เมื่อรัน User เดิมที่เคยมี Account อยู่แล้ว Frontend จะต้องแสดงจุดไข่ปลา "Creating Account" เป็นสีเขียว (Success) 
-- M365 และ Email ยังคงทำงานตามเงื่อนไข Time delay และ Payload config ตามปกติ
+- When a job throws an exception in `sync_user.py`, the specific sub-step that was executing immediately shows a red dot (`bg-error`) and "failed" text in the Frontend UI.
+- No sub-steps are left infinitely pulsing (`animate-pulse`) when a job reaches a terminal `failed` or `cancelled` state.
+- `worker/steps_schema.json` continues to drive the dynamic UI rendering successfully without hardcoded UI steps.
