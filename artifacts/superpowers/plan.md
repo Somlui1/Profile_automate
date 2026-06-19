@@ -1,30 +1,24 @@
 ## Goal
-Fix duplicate code in `ADExplorerTab.tsx` and implement a backend API for the new MMC-style ADUC interface to allow real, direct user creation in Active Directory.
+Enable double-click folder navigation inside the main AD Explorer list view (`ADExplorerTab.tsx`), allowing users to double-click an OU, container, or domain to open it, list its children, and automatically expand all parent folders in the left sidebar console tree.
 
 ## Assumptions
-- The frontend uses `fetch` to communicate with the `/api/v1/user` backend routes.
-- The `ad_service` module can handle synchronous user creation via `ad_service.create_user`.
-- The new `ADExplorerTab` component added by the user (lines 1583-3165) is the correct version to keep, and the old one (lines 1-1582) should be removed.
+- Custom and standard container object types are `ou`, `container`, and `domain`.
+- React state `selectedOUDn` and `expandedOUs` are the sources of truth for list navigation and sidebar tree expansion.
 
 ## Plan
-### Step 1: Remove Duplicate Component Code
-- **Files**: `frontend/src/components/ADExplorerTab.tsx`
-- **Change**: Delete the old component implementation (lines 1 to 1582) so that only the new `ADExplorerTab` component and its interfaces remain.
-- **Verify**: Run `npx tsc --noEmit` inside `frontend/` to ensure there are no duplicate export errors.
 
-### Step 2: Implement Backend API Endpoint
-- **Files**: `api/endpoints/user.py`
-- **Change**: Add a new Pydantic schema `ADCreateUserDirectSchema` matching the frontend's `newUserForm` fields (firstName, lastName, logonName, description, dept, title, password, employeeId, ou). Add a new `POST /ad/create-direct` route that calls `ad_service.create_user` with these mapped details.
-- **Verify**: Run `python -m py_compile api/endpoints/user.py`.
-
-### Step 3: Wire Frontend to API
-- **Files**: `frontend/src/components/ADExplorerTab.tsx`
-- **Change**: Modify `handleCreateUserSubmit` to make a `POST` request to `/api/v1/user/ad/create-direct` using the form data. Only append the new `ADObject` to the local state (`setAdObjects`) if the API request succeeds.
-- **Verify**: Run `npx tsc --noEmit` inside `frontend/` to ensure type correctness.
+### Step 1: Implement Double-Click Navigation & Tree Expansion Sync in `ADExplorerTab.tsx`
+- **Files**: [ADExplorerTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/ADExplorerTab.tsx)
+- **Change**:
+  - Update `handleRowDoubleClick` to detect if the double-clicked item is of type `ou`, `container`, or `domain`.
+  - If so, update `selectedOUDn` to the item's `dn` and clear `selectedRowIndex`.
+  - Parse the item's DN hierarchy (using non-escaped comma regex split) to recursively resolve all parent OUs, and merge them as expanded (`true`) in the `expandedOUs` state.
+- **Verify**: Compile the frontend project using:
+  `npx tsc --noEmit` inside `frontend/`
 
 ## Risks & mitigations
-- **Risk**: Active Directory fails to create the user due to password complexity rules or duplicate accounts.
-- **Mitigation**: The frontend will catch the non-200 response and display an error toast instead of falsely updating the UI state.
+- **Risk**: DN path parsing using simple comma splits might break if OUs have escaped commas in their names.
+- **Mitigation**: Use the regex `/(?<!\\),/` to split path components safely, avoiding splits on escaped commas.
 
 ## Rollback plan
-- Revert `ADExplorerTab.tsx` and `api/endpoints/user.py` via Git to undo the endpoint integration and restore the duplicate code block if needed.
+- Revert the modifications to `ADExplorerTab.tsx` using `git checkout`.

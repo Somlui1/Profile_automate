@@ -12,6 +12,29 @@ except ImportError:
 
 logger = logging.getLogger("app.services.ad_service")
 
+import time
+
+class SimpleTTLCache:
+    def __init__(self, ttl_seconds):
+        self.ttl = ttl_seconds
+        self.cache = {}
+        
+    def get(self, key):
+        if key in self.cache:
+            entry = self.cache[key]
+            if time.time() - entry['time'] < self.ttl:
+                return entry['data']
+            else:
+                del self.cache[key]
+        return None
+        
+    def set(self, key, data):
+        self.cache[key] = {'data': data, 'time': time.time()}
+
+# Module-level cache for AD object details
+_details_cache = SimpleTTLCache(60)
+
+
 class ActiveDirectoryService:
     """
     Handles communication with Active Directory via LDAP/LDAPS.
@@ -123,7 +146,8 @@ class ActiveDirectoryService:
                 user=self.bind_dn,
                 password=self.bind_password,
                 auto_bind=True,
-                receive_timeout=3
+                receive_timeout=3,
+                check_names=False
             )
             logger.debug(f"LDAP connection established to: {conn.server.host}")
             return conn
@@ -291,6 +315,9 @@ class ActiveDirectoryService:
                     {"dn": "OU=Production,OU=Users,DC=aapico,DC=com", "name": "Production", "type": "ou", "has_children": True},
                     {"dn": "CN=Administrator,OU=Users,DC=aapico,DC=com", "name": "Administrator", "type": "user", "has_children": False},
                     {"dn": "CN=Vipha Jinda,OU=Users,DC=aapico,DC=com", "name": "Vipha Jinda", "type": "user", "has_children": False},
+                    {"dn": "CN=External Consultant,OU=Users,DC=aapico,DC=com", "name": "External Consultant", "type": "contact", "has_children": False},
+                    {"dn": "CN=Finance Share,OU=Users,DC=aapico,DC=com", "name": "Finance Shared Folder", "type": "sharedfolder", "has_children": False},
+                    {"dn": "CN=HR-Printer,OU=Users,DC=aapico,DC=com", "name": "HR Color Printer", "type": "printer", "has_children": False},
                 ]
             # Engineering OU
             elif parent_dn_lower == "ou=engineering,ou=users,dc=aapico,dc=com":
@@ -391,12 +418,25 @@ class ActiveDirectoryService:
         try:
             conn.search(
                 search_base=parent_dn,
-                search_filter="(|(objectClass=organizationalUnit)(objectClass=container)(objectClass=user)(objectClass=group))",
+                search_filter="(|(objectClass=organizationalUnit)(objectClass=container)(objectClass=builtinDomain)(objectClass=systemContainer)(objectClass=lostAndFound)(objectClass=user)(objectClass=group)(objectClass=contact)(objectClass=volume)(objectClass=printQueue))",
                 search_scope=LEVEL,
-                attributes=["objectClass", "ou", "cn", "distinguishedName"]
+                attributes=["objectClass", "ou", "cn", "distinguishedName", "description", "title", "department", "mail", "company"]
             )
             
             results = []
+            
+            def safe_get_tree(entry_obj, attr_name, default=""):
+                try:
+                    if hasattr(entry_obj, attr_name):
+                        attr = getattr(entry_obj, attr_name)
+                        if attr and attr.value:
+                            if isinstance(attr.value, list):
+                                return str(attr.value[0]) if attr.value else default
+                            return str(attr.value)
+                except Exception:
+                    pass
+                return default
+                
             for entry in conn.entries:
                 classes = entry.objectClass.values
                 dn = entry.entry_dn
@@ -404,16 +444,24 @@ class ActiveDirectoryService:
                 node_type = "user"
                 has_children = False
                 
-                if "organizationalUnit" in classes:
+                if "domain" in classes or "domainDNS" in classes:
+                    node_type = "domain"
+                elif "organizationalUnit" in classes:
                     node_type = "ou"
-                elif "container" in classes:
+                elif "container" in classes or "builtinDomain" in classes or "systemContainer" in classes or "lostAndFound" in classes:
                     node_type = "container"
                 elif "group" in classes:
                     node_type = "group"
-                elif "user" in classes or "person" in classes:
-                    node_type = "user"
                 elif "computer" in classes:
                     node_type = "computer"
+                elif "contact" in classes:
+                    node_type = "contact"
+                elif "volume" in classes:
+                    node_type = "sharedfolder"
+                elif "printQueue" in classes:
+                    node_type = "printer"
+                elif "user" in classes or "person" in classes:
+                    node_type = "user"
                     
                 has_children = False
                 if node_type in ["ou", "container"]:
@@ -421,7 +469,7 @@ class ActiveDirectoryService:
                         # Perform a level search to see if there are any child elements under this node
                         conn.search(
                             search_base=dn,
-                            search_filter="(|(objectClass=organizationalUnit)(objectClass=container)(objectClass=user)(objectClass=group))",
+                            search_filter="(|(objectClass=organizationalUnit)(objectClass=container)(objectClass=builtinDomain)(objectClass=systemContainer)(objectClass=lostAndFound)(objectClass=user)(objectClass=group)(objectClass=contact)(objectClass=volume)(objectClass=printQueue))",
                             search_scope=LEVEL,
                             attributes=["distinguishedName"]
                         )
@@ -449,7 +497,12 @@ class ActiveDirectoryService:
                     "dn": dn,
                     "name": name,
                     "type": node_type,
-                    "has_children": has_children
+                    "has_children": has_children,
+                    "description": safe_get_tree(entry, "description"),
+                    "title": safe_get_tree(entry, "title"),
+                    "department": safe_get_tree(entry, "department"),
+                    "mail": safe_get_tree(entry, "mail"),
+                    "company": safe_get_tree(entry, "company")
                 })
                 
             # Sort: containers/OUs first (alphabetically), then other objects (alphabetically)
@@ -465,6 +518,10 @@ class ActiveDirectoryService:
         """
         Gets detailed attributes of a user in Active Directory.
         """
+        cached_data = _details_cache.get(dn)
+        if cached_data:
+            return cached_data
+
         try:
             import re
             dn_parts = re.split(r'(?<!\\),', dn)
@@ -526,7 +583,22 @@ class ActiveDirectoryService:
                                     "city": 'Bang Pa-In',
                                     "state": 'Phranakhon Sri Ayutthaya',
                                     "zipCode": req_info.get('zip_code', '13160'),
-                                    "country": 'Thailand'
+                                    "country": 'Thailand',
+                                    "givenName": name_eng.split(' ')[0],
+                                    "sn": " ".join(name_eng.split(' ')[1:]) if len(name_eng.split(' ')) > 1 else "",
+                                    "displayName": name_eng,
+                                    "userPrincipalName": f"{uid}@aapico.com",
+                                    "sAMAccountName": uid,
+                                    "userAccountControl": 512,
+                                    "pwdNeverExpires": False,
+                                    "acctDisabled": False,
+                                    "mustChangePwd": True,
+                                    "memberOf": ["Domain Users"],
+                                    "employeeID": req_info.get('employee_id', ''),
+                                    "employeeType": "Regular",
+                                    "scriptPath": "logon.bat",
+                                    "homeDirectory": f"\\\\server\\users\\{uid}",
+                                    "extensionAttributes": {}
                                 }
                                 break
                         except Exception as inner_e:
@@ -593,7 +665,31 @@ class ActiveDirectoryService:
                     "city": "Bang Pa-In",
                     "state": "Phranakhon Sri Ayutthaya",
                     "zipCode": "13160",
-                    "country": "Thailand"
+                    "country": "Thailand",
+                    "givenName": first_name,
+                    "initials": "",
+                    "sn": last_name,
+                    "displayName": name,
+                    "telephoneNumber": "035-350880",
+                    "userPrincipalName": f"{uid}@aapico.com",
+                    "sAMAccountName": uid,
+                    "userAccountControl": 512,
+                    "pwdNeverExpires": False,
+                    "acctDisabled": False,
+                    "mustChangePwd": True,
+                    "pwdLastSet": "0",
+                    "profilePath": "",
+                    "scriptPath": "logon.bat",
+                    "homeDirectory": f"\\\\server\\users\\{uid}",
+                    "homeDrive": "H:",
+                    "memberOf": ["Domain Users", "VPN Users"],
+                    "employeeID": "E99000",
+                    "employeeType": "Regular",
+                    "mailNickname": uid,
+                    "extensionAttributes": {
+                        "extensionAttribute1": "TH",
+                        "extensionAttribute2": "CostCenter:1001"
+                    }
                 }
 
             conn = self._get_connection()
@@ -603,10 +699,16 @@ class ActiveDirectoryService:
                     search_filter="(objectClass=user)",
                     search_scope=BASE,
                     attributes=[
-                        "sAMAccountName", "displayName", "givenName", "sn", "description", 
-                        "physicalDeliveryOfficeName", "telephoneNumber", "mail", "l", "st", 
-                        "postalCode", "co", "mobile", "title", "department", "company", 
-                        "employeeID", "manager", "userAccountControl", "streetAddress", "pager"
+                        "sAMAccountName", "displayName", "givenName", "initials", "sn", "description", 
+                        "physicalDeliveryOfficeName", "telephoneNumber", "otherTelephone", "mail", "wWWHomePage",
+                        "streetAddress", "postOfficeBox", "l", "st", "postalCode", "co", 
+                        "userPrincipalName", "userAccountControl", "pwdLastSet", "accountExpires", "logonHours",
+                        "profilePath", "scriptPath", "homeDirectory", "homeDrive",
+                        "homePhone", "pager", "mobile", "facsimileTelephoneNumber", "ipPhone", "info",
+                        "title", "department", "company", "manager", "memberOf", "employeeID", "employeeType", "mailNickname",
+                        "extensionAttribute1", "extensionAttribute2", "extensionAttribute3", "extensionAttribute4", "extensionAttribute5",
+                        "extensionAttribute6", "extensionAttribute7", "extensionAttribute8", "extensionAttribute9", "extensionAttribute10",
+                        "extensionAttribute11", "extensionAttribute12", "extensionAttribute13", "extensionAttribute14", "extensionAttribute15"
                     ]
                 )
                 if not conn.entries:
@@ -643,7 +745,32 @@ class ActiveDirectoryService:
                     uac = int(uac_str) if uac_str else 512
                 except ValueError:
                     uac = 512
+                # extract memberOf correctly
+                member_of_list = []
+                try:
+                    if hasattr(entry, 'memberOf') and entry.memberOf.value:
+                        for grp_dn in entry.memberOf.value:
+                            grp_parts = re.split(r'(?<!\\),', str(grp_dn))
+                            grp_cn_parts = [p for p in grp_parts if p.upper().startswith("CN=")]
+                            if grp_cn_parts:
+                                member_of_list.append(grp_cn_parts[0].split("=", 1)[1].replace('\\\\,', ',').replace('\\,', ',').strip())
+                            else:
+                                member_of_list.append(str(grp_dn))
+                except Exception as e:
+                    logger.warning(f"Failed to parse memberOf for {dn}: {e}")
+
                 status = "Disabled" if uac & 2 else "Active"
+                pwd_never_expires = bool(uac & 65536)
+                acct_disabled = bool(uac & 2)
+                
+                pwd_last_set_str = safe_get("pwdLastSet")
+                must_change_pwd = (pwd_last_set_str == "0")
+                
+                ext_attrs = {}
+                for i in range(1, 16):
+                    ext_val = safe_get(f"extensionAttribute{i}")
+                    if ext_val:
+                        ext_attrs[f"extensionAttribute{i}"] = ext_val
                 
                 pager_val = safe_get("pager")
                 emp_id_val = safe_get("employeeID")
@@ -662,7 +789,7 @@ class ActiveDirectoryService:
                     "ou": ",".join(dn_parts[1:]) if len(dn_parts) > 1 else "",
                     "papercut": "Synced",
                     "status": status,
-                    "mobile": safe_get("mobile") or safe_get("telephoneNumber"),
+                    "mobile": safe_get("mobile"),
                     "company": safe_get("company"),
                     "manager": manager_val,
                     "office": safe_get("physicalDeliveryOfficeName"),
@@ -671,7 +798,38 @@ class ActiveDirectoryService:
                     "city": safe_get("l"),
                     "state": safe_get("st"),
                     "zipCode": safe_get("postalCode"),
-                    "country": safe_get("co")
+                    "country": safe_get("co"),
+                    "givenName": safe_get("givenName"),
+                    "initials": safe_get("initials"),
+                    "sn": safe_get("sn"),
+                    "displayName": safe_get("displayName"),
+                    "telephoneNumber": safe_get("telephoneNumber"),
+                    "otherTelephone": safe_get("otherTelephone"),
+                    "wWWHomePage": safe_get("wWWHomePage"),
+                    "postOfficeBox": safe_get("postOfficeBox"),
+                    "userPrincipalName": safe_get("userPrincipalName"),
+                    "sAMAccountName": safe_get("sAMAccountName"),
+                    "userAccountControl": uac,
+                    "pwdNeverExpires": pwd_never_expires,
+                    "acctDisabled": acct_disabled,
+                    "mustChangePwd": must_change_pwd,
+                    "accountExpires": safe_get("accountExpires"),
+                    "pwdLastSet": pwd_last_set_str,
+                    "logonHours": safe_get("logonHours"),
+                    "profilePath": safe_get("profilePath"),
+                    "scriptPath": safe_get("scriptPath"),
+                    "homeDirectory": safe_get("homeDirectory"),
+                    "homeDrive": safe_get("homeDrive"),
+                    "homePhone": safe_get("homePhone"),
+                    "pager": safe_get("pager"),
+                    "facsimileTelephoneNumber": safe_get("facsimileTelephoneNumber"),
+                    "ipPhone": safe_get("ipPhone"),
+                    "comment": safe_get("info"),
+                    "memberOf": member_of_list,
+                    "employeeID": safe_get("employeeID"),
+                    "employeeType": safe_get("employeeType"),
+                    "mailNickname": safe_get("mailNickname"),
+                    "extensionAttributes": ext_attrs
                 }
             except Exception as search_err:
                 logger.exception(f"LDAP search failed in get_user_details for DN {dn}")
@@ -679,8 +837,139 @@ class ActiveDirectoryService:
             finally:
                 if conn:
                     conn.unbind()
+            _details_cache.set(dn, result_dict)
+            return result_dict
         except Exception as outer_err:
             logger.exception(f"Outer exception in get_user_details for DN {dn}")
+            raise outer_err
+
+    def get_group_details(self, dn: str) -> Optional[dict]:
+        """
+        Gets detailed attributes of a Group in Active Directory.
+        """
+        cached_data = _details_cache.get(dn)
+        if cached_data:
+            return cached_data
+
+        import re
+        try:
+            dn_parts = re.split(r'(?<!\\),', dn)
+            cn_part = dn_parts[0] if dn_parts else ''
+            raw_name = cn_part[3:].replace('\\\\,', ',').replace('\\,', ',').strip() if cn_part.upper().startswith('CN=') else cn_part.replace('\\\\,', ',').replace('\\,', ',').strip()
+
+            if self.mock_mode:
+                return {
+                    "uid": raw_name,
+                    "name": raw_name,
+                    "sAMAccountName": raw_name,
+                    "description": f"Mock group for {raw_name}",
+                    "groupScope": "Global",
+                    "groupCategory": "Security",
+                    "cn": raw_name,
+                    "members": [
+                        {"dn": "CN=Anek Phromsiri,OU=Engineering,OU=Users,DC=aapico,DC=com", "name": "Anek Phromsiri", "type": "user"},
+                        {"dn": "CN=Vipha Jinda,OU=Users,DC=aapico,DC=com", "name": "Vipha Jinda", "type": "user"}
+                    ],
+                    "memberOf": [
+                        {"dn": "CN=Administrators,CN=Builtin,DC=aapico,DC=com", "name": "Administrators", "type": "group"}
+                    ],
+                    "extensionAttributes": {}
+                }
+
+            conn = self._get_connection()
+            try:
+                conn.search(
+                    search_base=dn,
+                    search_filter="(objectClass=group)",
+                    search_scope=BASE,
+                    attributes=["sAMAccountName", "description", "groupType", "member", "memberOf", "cn"]
+                )
+                if not conn.entries:
+                    return None
+                    
+                entry = conn.entries[0]
+                
+                def safe_get(attr_name, default=""):
+                    try:
+                        if hasattr(entry, attr_name):
+                            attr = getattr(entry, attr_name)
+                            if attr and attr.value:
+                                if isinstance(attr.value, list):
+                                    return str(attr.value[0]) if attr.value else default
+                                return str(attr.value)
+                    except Exception:
+                        pass
+                    return default
+
+                group_type_val = safe_get("groupType")
+                scope = "Global"
+                category = "Security"
+                if group_type_val:
+                    try:
+                        val = int(group_type_val) & 0xFFFFFFFF
+                        # 0x80000000 (2147483648) means Security Group
+                        category = "Security" if (val & 2147483648) else "Distribution"
+                        # Scope
+                        if (val & 4):
+                            scope = "Domain Local"
+                        elif (val & 8):
+                            scope = "Universal"
+                        elif (val & 2):
+                            scope = "Global"
+                    except:
+                        pass
+
+                # Parse members
+                members_list = []
+                try:
+                    if hasattr(entry, 'member') and entry.member.value:
+                        vals = entry.member.value if isinstance(entry.member.value, list) else [entry.member.value]
+                        for m_dn in vals:
+                            m_parts = re.split(r'(?<!\\),', str(m_dn))
+                            m_cn_parts = [p for p in m_parts if p.upper().startswith("CN=")]
+                            m_name = m_cn_parts[0].split("=", 1)[1].replace('\\\\,', ',').replace('\\,', ',').strip() if m_cn_parts else str(m_dn)
+                            # infer type from DN (basic)
+                            m_type = "user"
+                            if "OU=Groups" in m_dn or "OU=Security Groups" in m_dn or "CN=Users" in m_dn and not ("OU=Users" in m_dn):
+                                m_type = "group" # simplistic heuristic
+                            elif "CN=Computers" in m_dn or "OU=Domain Controllers" in m_dn:
+                                m_type = "computer"
+                            members_list.append({"dn": str(m_dn), "name": m_name, "type": m_type})
+                except Exception as e:
+                    logger.warning(f"Failed to parse member for group {dn}: {e}")
+
+                # Parse memberOf
+                member_of_list = []
+                try:
+                    if hasattr(entry, 'memberOf') and entry.memberOf.value:
+                        vals = entry.memberOf.value if isinstance(entry.memberOf.value, list) else [entry.memberOf.value]
+                        for m_dn in vals:
+                            m_parts = re.split(r'(?<!\\),', str(m_dn))
+                            m_cn_parts = [p for p in m_parts if p.upper().startswith("CN=")]
+                            m_name = m_cn_parts[0].split("=", 1)[1].replace('\\\\,', ',').replace('\\,', ',').strip() if m_cn_parts else str(m_dn)
+                            member_of_list.append({"dn": str(m_dn), "name": m_name, "type": "group"})
+                except Exception as e:
+                    logger.warning(f"Failed to parse memberOf for group {dn}: {e}")
+
+                result_dict = {
+                    "uid": safe_get("sAMAccountName"),
+                    "name": safe_get("cn") or raw_name,
+                    "sAMAccountName": safe_get("sAMAccountName"),
+                    "description": safe_get("description"),
+                    "groupScope": scope,
+                    "groupCategory": category,
+                    "cn": safe_get("cn"),
+                    "members": members_list,
+                    "memberOf": member_of_list,
+                    "extensionAttributes": {}
+                }
+                _details_cache.set(dn, result_dict)
+                return result_dict
+            finally:
+                if conn:
+                    conn.unbind()
+        except Exception as outer_err:
+            logger.exception(f"Outer exception in get_group_details for DN {dn}")
             raise outer_err
 
     def search_ous(self, query: str = "") -> list:

@@ -1,32 +1,28 @@
+# Brainstorm: Enable Deep Nested Sub-OU Navigation in AD Explorer Tab
+
 ## Goal
-Ensure end-to-end reliability of the provisioning pipeline's logging and UI status reflection. Specifically, guarantee that if a job fails or throws an exception in the backend (`sync_user.py`), the Frontend (`JobQueueTab.tsx`) perfectly reflects this state (e.g., stopping the "running" pulse and marking the specific sub-step as "failed") without visual discrepancies, using `steps_schema.json` as the structural bridge.
+Enable seamless navigation into deep nested sub-OUs and containers inside the main AD Explorer view (`ADExplorerTab.tsx`). Users should be able to double-click an OU or container in the data table to navigate into it, update the list view, and auto-expand its parent folders in the left sidebar Console Tree.
 
 ## Constraints
-- Must rely on `worker/steps_schema.json` as the standard schema mapping for steps and sub-steps.
-- UI state rendering strictly depends on parsing the `sub_step_status` from the latest transactional log of each `sub_step`.
-- Exception blocks in `sync_user.py` currently emit a generic step-level "failed" log, but do not specify which `sub_step` failed in the metadata. This leaves the latest sub-step log as "running", causing infinite pulsing in the UI.
+- Align with the existing navigation and selection states (`selectedOUDn`, `expandedOUs`).
+- Ensure no regression on double-click behavior for Users and Groups.
 
 ## Known context
-- The UI derives sub-step statuses dynamically: `subStates[log.metadata.sub_step] = (log.metadata.sub_step_status || 'RUNNING').toUpperCase();`
-- When an exception occurs in `sync_user.py`, `update_job(job_id, status="failed")` is called and a failed log is added, but it lacks the `metadata` tag pointing to the exact `sub_step` that crashed.
-- Because of this missing metadata, the Frontend UI does not override the sub-step state, resulting in a visual bug where the overall job is marked Failed (red), but the sub-step continues to Pulse (blue).
+- **Current Limitation**: Double-clicking an OU or container in the list table displays a toast saying "Properties viewer is restricted to User and Group objects only" instead of navigating inside the folder.
+- **Tree Expansion Syncing**: When navigating deep into sub-OUs via list view double-clicks, the left panel sidebar Console Tree should automatically expand all parent folders in the hierarchy to maintain visual sync.
 
 ## Risks
-- Modifying the backend exception handler to guess the failed `sub_step` might result in inaccurate logs if the context isn't passed down carefully.
-- Overriding state purely in the Frontend might mask underlying logging issues, making debugging harder for developers reading the raw database logs.
-- Discrepancies between the backend's hardcoded step strings and `steps_schema.json` can cause steps to vanish or misalign in the UI.
+- Incorrectly parsing DN path parts to expand parents could cause rendering crashes if the DN has escaped commas.
+- Mitigation: Parse parent DNs by splitting on commas not preceded by a backslash (`(?<!\\),` or standard split if regex isn't needed, but regex is safer).
 
 ## Options (2–4)
-1. **Frontend Override (UI Resilience):** Modify `JobQueueTab.tsx` so that if the overall job `status === 'failed'`, any sub-step currently evaluated as `RUNNING` in `subStates` is automatically forced to display as `FAILED`. This guarantees no infinite pulsing regardless of backend log quality.
-2. **Backend Context Tracking (Log Accuracy):** Modify `sync_user.py` to track the `current_sub_step` in a variable. When an exception is caught in `_run_step`, use this variable to inject `metadata={"sub_step": current_sub_step, "sub_step_status": "failed"}` into the final error log.
-3. **Hybrid Approach (Recommended):** Implement both. Use backend context tracking for clean, accurate database logs, and implement a frontend fallback override to guarantee UI consistency even if a hard crash prevents the backend from logging properly.
+- **Option 1**: Allow double-clicking OUs in the list view to set `selectedOUDn`, but do not expand the parent chain in the left tree.
+- **Option 2**: Allow double-clicking OUs to navigate (`selectedOUDn`), auto-expand the navigated OU, and recursively resolve and expand all parent DNs in the left tree to keep both views perfectly synchronized.
 
 ## Recommendation
-Implement the **Hybrid Approach**. 
-- In `JobQueueTab.tsx`, update the mapping logic: if `job.status === 'failed'` and a sub-step is `RUNNING`, set its visual state to `FAILED`. 
-- In `sync_user.py`, ensure that when an exception is caught, we attempt to resolve the last active sub-step and log it as `failed` so the database remains fully accurate.
+- **Option 2**: Implement full double-click navigation for folders (`ou`, `container`, `domain`) in `ADExplorerTab.tsx`, and automatically expand the entire parent DN chain in the left sidebar.
 
 ## Acceptance criteria
-- When a job throws an exception in `sync_user.py`, the specific sub-step that was executing immediately shows a red dot (`bg-error`) and "failed" text in the Frontend UI.
-- No sub-steps are left infinitely pulsing (`animate-pulse`) when a job reaches a terminal `failed` or `cancelled` state.
-- `worker/steps_schema.json` continues to drive the dynamic UI rendering successfully without hardcoded UI steps.
+1. Double-clicking an OU, container, or domain in the list table navigates into it and displays its contents.
+2. The left-hand sidebar tree auto-expands to match the selected sub-OU, showing the complete parent hierarchy.
+3. User and Group double-clicks continue to open the Properties Modal as expected.

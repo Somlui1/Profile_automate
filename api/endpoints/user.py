@@ -129,6 +129,30 @@ def get_user_details(dn: str):
             detail=f"An unexpected error occurred: {str(e)}"
         )
 
+@router.get("/ad/group-details", status_code=status.HTTP_200_OK)
+def get_group_details(dn: str):
+    """
+    Get detailed attributes of a Group in Active Directory.
+    """
+    try:
+        details = ad_service.get_group_details(dn)
+        if not details:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Group with DN '{dn}' not found in Active Directory."
+            )
+        return details
+    except ActiveDirectoryError as ae:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Active Directory Query Failed: {str(ae)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred: {str(e)}"
+        )
+
 @router.get("/ou/search", status_code=status.HTTP_200_OK)
 def search_ous(query: Optional[str] = None):
     """

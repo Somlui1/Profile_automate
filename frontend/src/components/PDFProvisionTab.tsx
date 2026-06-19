@@ -1990,9 +1990,9 @@ const handleNameTyping = (first: string, last: string) => {
 
           {/* Tabs */}
           <div className="flex border-b border-outline-variant px-6">
-            <button className={`px-4 py-3 text-xs font-bold uppercase transition-all ${debugTab === 'visual' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`} onClick={() => setDebugTab('visual')}>Visual Inspector</button>
-            <button className={`px-4 py-3 text-xs font-bold uppercase transition-all ${debugTab === 'schema' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`} onClick={() => setDebugTab('schema')}>Technical Schema</button>
-            <button className={`px-4 py-3 text-xs font-bold uppercase transition-all ${debugTab === 'json' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`} onClick={() => setDebugTab('json')}>Raw JSON</button>
+            <button type="button" className={`px-4 py-3 text-xs font-bold uppercase transition-all ${debugTab === 'visual' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`} onClick={() => setDebugTab('visual')}>Visual Inspector</button>
+            <button type="button" className={`px-4 py-3 text-xs font-bold uppercase transition-all ${debugTab === 'schema' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`} onClick={() => setDebugTab('schema')}>Technical Schema</button>
+            <button type="button" className={`px-4 py-3 text-xs font-bold uppercase transition-all ${debugTab === 'json' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`} onClick={() => setDebugTab('json')}>Raw JSON</button>
           </div>
 
           {/* Content Area */}
@@ -2051,12 +2051,14 @@ const handleNameTyping = (first: string, last: string) => {
             </div>
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={() => setCurrentStep(2)}
                 className="px-4 py-2 bg-slate-100 text-slate-700 text-xs uppercase font-bold rounded hover:bg-slate-200 transition-all cursor-pointer"
               >
                 Back to Editor
               </button>
               <button
+                type="button"
                 onClick={() => { setCurrentStep(3); handleSequenceStart(); }}
                 className="px-4 py-2 bg-primary text-white text-xs uppercase font-bold rounded hover:brightness-105 transition-all cursor-pointer shadow"
               >

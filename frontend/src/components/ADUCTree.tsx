@@ -4,7 +4,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ADNode } from '../types';
+import { ADNode, ADObject } from '../types';
+import { ADPropertiesModal } from './ADPropertiesModal';
 import { 
   ChevronRight, 
   ChevronDown, 
@@ -41,6 +42,8 @@ export const ADUCTree: React.FC<ADUCTreeProps> = ({
   const [detailsList, setDetailsList] = useState<ADNode[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [selectedNodeName, setSelectedNodeName] = useState('aapico.com');
+  const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
+  const [activePropertyObject, setActivePropertyObject] = useState<ADObject | null>(null);
 
   // Load root domain nodes
   useEffect(() => {
@@ -159,6 +162,12 @@ export const ADUCTree: React.FC<ADUCTreeProps> = ({
         return { css: 'text-slate-500', icon: 'person' };
       case 'computer':
         return { css: 'text-slate-500', icon: 'computer' };
+      case 'contact':
+        return { css: 'text-slate-500', icon: 'contact_mail' };
+      case 'sharedfolder':
+        return { css: 'text-blue-500', icon: 'folder_shared' };
+      case 'printer':
+        return { css: 'text-slate-500', icon: 'print' };
       default:
         return { css: 'text-slate-500', icon: 'folder' };
     }
@@ -197,6 +206,7 @@ export const ADUCTree: React.FC<ADUCTreeProps> = ({
             {/* Expander toggle */}
             {node.has_children ? (
               <button 
+                type="button"
                 onClick={(e) => toggleExpand(e, node.dn)}
                 className="tree-toggle text-slate-500 hover:text-slate-800 focus:outline-none flex items-center justify-center h-4 w-4 shrink-0 transition-transform cursor-pointer"
               >
@@ -255,10 +265,12 @@ export const ADUCTree: React.FC<ADUCTreeProps> = ({
   };
 
   return (
-    <div className="aduc-container rounded-lg overflow-hidden border border-[#c5c6d1] flex flex-col font-sans">
+    <>
+      <div className="aduc-container rounded-lg overflow-hidden border border-[#c5c6d1] flex flex-col font-sans">
       {/* Windows style toolbar header */}
       <div className="aduc-toolbar h-9 bg-[#f0f0f0] border-b border-[#d1d1d1] flex items-center px-2 gap-1.5 shrink-0 select-none">
         <button 
+          type="button"
           title="Back"
           disabled
           className="aduc-btn w-6 h-6 flex items-center justify-center text-slate-400 disabled:opacity-40"
@@ -266,6 +278,7 @@ export const ADUCTree: React.FC<ADUCTreeProps> = ({
           <ArrowLeft className="h-3.5 w-3.5" />
         </button>
         <button 
+          type="button"
           title="Forward"
           disabled
           className="aduc-btn w-6 h-6 flex items-center justify-center text-slate-400 disabled:opacity-40"
@@ -274,6 +287,7 @@ export const ADUCTree: React.FC<ADUCTreeProps> = ({
         </button>
         <div className="h-4 w-px bg-slate-300 mx-0.5" />
         <button 
+          type="button"
           title="Up One Level"
           onClick={handleUpOneLevel}
           className="aduc-btn w-6 h-6 flex items-center justify-center text-slate-600 rounded hover:bg-slate-200 active:bg-slate-300 cursor-pointer"
@@ -282,6 +296,7 @@ export const ADUCTree: React.FC<ADUCTreeProps> = ({
         </button>
         <div className="h-4 w-px bg-slate-200 mx-0.5" />
         <button 
+          type="button"
           title="Refresh"
           onClick={() => { loadRootNodes(); loadDetailsList(selectedDN); }}
           className="aduc-btn w-6 h-6 flex items-center justify-center text-slate-600 rounded hover:bg-slate-200 active:bg-slate-300 cursor-pointer"
@@ -308,13 +323,18 @@ export const ADUCTree: React.FC<ADUCTreeProps> = ({
               <tr className="bg-[#f5f5f5] text-slate-800 text-left font-normal border-b border-[#d1d1d1]">
                 <th className="p-1 px-1.5 border-r border-[#d1d1d1] font-semibold text-slate-700 select-none">Name</th>
                 <th className="p-1 px-1.5 border-r border-[#d1d1d1] font-semibold text-slate-700 select-none">Type</th>
+                <th className="p-1 px-1.5 border-r border-[#d1d1d1] font-semibold text-slate-700 select-none">Description</th>
+                <th className="p-1 px-1.5 border-r border-[#d1d1d1] font-semibold text-slate-700 select-none">Title</th>
+                <th className="p-1 px-1.5 border-r border-[#d1d1d1] font-semibold text-slate-700 select-none">Department</th>
+                <th className="p-1 px-1.5 border-r border-[#d1d1d1] font-semibold text-slate-700 select-none">Email</th>
+                <th className="p-1 px-1.5 border-r border-[#d1d1d1] font-semibold text-slate-700 select-none">Company</th>
                 <th className="p-1 px-1.5 font-semibold text-slate-700 select-none">LDAP Path</th>
               </tr>
             </thead>
             <tbody>
               {loadingDetails ? (
                 <tr>
-                  <td colSpan={3} className="text-center py-16 text-slate-400 italic">
+                  <td colSpan={8} className="text-center py-16 text-slate-400 italic">
                     <Loader2 className="h-4 w-4 animate-spin inline-block mr-1.5 text-primary" /> Loading directory items...
                   </td>
                 </tr>
@@ -328,6 +348,9 @@ export const ADUCTree: React.FC<ADUCTreeProps> = ({
                         if (['ou', 'container', 'domain'].includes(child.type)) {
                           handleNodeClick(child);
                           setExpandedNodes(prev => ({ ...prev, [child.dn]: true }));
+                        } else if (['user', 'group'].includes(child.type)) {
+                          setActivePropertyObject(child as unknown as ADObject);
+                          setIsPropertiesOpen(true);
                         }
                       }}
                       className="hover:bg-[#e8f0fe] cursor-pointer text-[11px] font-sans border-b border-slate-100"
@@ -341,6 +364,11 @@ export const ADUCTree: React.FC<ADUCTreeProps> = ({
                         </div>
                       </td>
                       <td className="p-1.5 font-semibold text-slate-700 uppercase border-r border-slate-100">{child.type}</td>
+                      <td className="p-1.5 text-slate-600 truncate max-w-[120px] border-r border-slate-100" title={child.description}>{child.description || '-'}</td>
+                      <td className="p-1.5 text-slate-600 truncate max-w-[100px] border-r border-slate-100" title={child.title}>{child.title || '-'}</td>
+                      <td className="p-1.5 text-slate-600 truncate max-w-[100px] border-r border-slate-100" title={child.department}>{child.department || '-'}</td>
+                      <td className="p-1.5 text-slate-600 truncate max-w-[120px] border-r border-slate-100" title={child.mail}>{child.mail || '-'}</td>
+                      <td className="p-1.5 text-slate-600 truncate max-w-[100px] border-r border-slate-100" title={child.company}>{child.company || '-'}</td>
                       <td className="p-1.5 font-mono text-slate-400 text-[10px] truncate max-w-sm" title={child.dn}>
                         {child.dn}
                       </td>
@@ -349,7 +377,7 @@ export const ADUCTree: React.FC<ADUCTreeProps> = ({
                 })
               ) : (
                 <tr>
-                  <td colSpan={3} className="text-center py-16 text-slate-400 italic">
+                  <td colSpan={8} className="text-center py-16 text-slate-400 italic">
                     (ว่าง — ไม่มี Object ภายในโฟลเดอร์นี้)
                   </td>
                 </tr>
@@ -365,5 +393,11 @@ export const ADUCTree: React.FC<ADUCTreeProps> = ({
         <div className="shrink-0">{detailsList.length} object(s) available</div>
       </div>
     </div>
+      <ADPropertiesModal
+        isOpen={isPropertiesOpen}
+        onClose={() => setIsPropertiesOpen(false)}
+        initialObject={activePropertyObject}
+      />
+    </>
   );
 };
