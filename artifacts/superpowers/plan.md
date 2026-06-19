@@ -1,5 +1,5 @@
 ## Goal
-แก้ไขปัญหาการอัปเดตกลุ่มสิทธิ์ (AD Groups) ที่ไม่ทำงานเนื่องจากข้อมูล `groups` ตกหล่นใน API Payload จากหน้าบ้าน และเพิ่มความเข้มงวดในการตรวจสอบ (Strict Verification) ของ AD Properties ทุกฟิลด์ก่อนจะอนุญาตให้รันในขั้นตอนถัดไป (เช่น PaperCut Sync และ M365 License) โดยการปรับปรุงทั้งหมดนี้ต้องไม่ส่งผลกระทบใดๆ ต่อการแสดงผล Logs บนระบบของหน้าบ้าน (Frontend Log Screen)
+แก้ไขปัญหาการอัปเดตกลุ่มสิทธิ์ (AD Groups) ที่ไม่ทำงานเนื่องจากข้อมูล `groups` ตกหล่นใน API Payload จากหน้าบ้าน และเพิ่มความเข้มงวดในการตรวจสอบ (Strict Verification) ของ AD Properties ทุกฟิลด์ก่อนจะอนุญาตให้รันในขั้นตอนถัดไป (เช่น PaperCut Sync และ M365 License) โดยการปรับปรุงทั้งหมดนี้ต้องไม่ส่งผลกระทบใดๆ ต่อการแสดงผล Logs บนระบบของหน้าบ้าน (Frontend Log Screen) และต้องแก้ไขเรื่องข้อจำกัดการค้นหากลุ่มด้วย CN เพียงอย่างเดียวของ Worker เพื่อรองรับการแอดกลุ่มด้วย sAMAccountName เหมือนของ API
 
 ## Assumptions
 1. `UserSyncRequest` ของระบบหลังบ้านใช้ schema `Dict[str, Any]` สำหรับ `custom_attributes` ซึ่งรองรับการส่งฟิลด์ `groups` ในรูปแบบ `List[str]` ได้ทันทีโดยไม่ติดขัด Pydantic validation
@@ -17,14 +17,14 @@
   2. เปิด Chrome Developer Tools (Network Tab) ตรวจสอบ Payload ของ POST request ไปที่ `/api/v1/jobs/sync`
   3. ตรวจสอบว่าใน `custom_attributes` มีอาเรย์ `groups` บรรจุชื่อกลุ่มถูกต้อง เช่น `["Domain Users", "BW200"]`
 
-### Step 2: ปรับปรุง Backend Validator ให้ดึงข้อมูลมาเปรียบเทียบทุกฟิลด์จาก Payload อย่างครบถ้วน
-- **Files**: [sync_user.py](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/tasks/sync_user.py)
+### Step 2: ปรับปรุง Backend Validator และ LDAP Group Search Filter ของ Worker
+- **Files**: [sync_user.py](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/tasks/sync_user.py), [ad_service.py](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/services/ad_service.py)
 - **Change**: 
-  - แก้ไขฟังก์ชัน `_execute_ad_creation` ให้สร้าง `expected_props` จากทุกคีย์ที่ถูกส่งเข้ามาทาง `custom_attributes` (ยกเว้นรหัสผ่าน `password` เนื่องจากเป็น write-only attribute ใน AD และไม่สามารถอ่านออกมา verify ได้)
-  - นำ fallback ค่าเริ่มต้นสำหรับฟิลด์ที่อาจจะไม่ได้กำหนดใน payload เพื่อเทียบกับค่าเริ่มต้นของการสร้าง เช่น `email`, `company`, `employee_id`, `mobile` เป็นต้น
+  - ใน [sync_user.py](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/tasks/sync_user.py): แก้ไขฟังก์ชัน `_execute_ad_creation` ให้สร้าง `expected_props` จากทุกคีย์ที่ถูกส่งเข้ามาทาง `custom_attributes` (ยกเว้นรหัสผ่าน `password` เนื่องจากเป็น write-only) พร้อมจัดการ fallback ค่าเริ่มต้น
+  - ใน [ad_service.py](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/services/ad_service.py): ปรับปรุงใน `create_user` ให้ใช้ filter การค้นหากลุ่มสิทธิ์แบบเดียวกับฝั่ง API: `(&(objectClass=group)(|(sAMAccountName={escaped_group})(cn={escaped_group})))` เพื่อรองรับการแอดกลุ่มด้วย sAMAccountName ที่ค้นหามาจากหน้าบ้าน
 - **Verify**:
   - รันโค้ดและส่ง Payload การทำงานตัวอย่างผ่านสคริปต์ทดสอบ
-  - ตรวจสอบว่า `expected_props` ครอบคลุมคีย์ทั้งหมดที่มีใน `custom_attributes` เช่น `profile_path`, `logon_script`, และ `groups`
+  - ตรวจสอบว่า Worker ค้นหากลุ่มด้วย sAMAccountName และแอดสมาชิกเข้ากลุ่มได้เรียบร้อยโดยไม่มี LDAP error
 
 ### Step 3: ตรวจสอบความถูกต้องแบบ End-to-End และผลกระทบต่อระบบแสดงผล Logs
 - **Files**: ตรวจสอบผลลัพธ์ผ่านหน้าจอระบบและสคริปต์
@@ -40,4 +40,4 @@
   - *Mitigation*: เพิ่มการจัดการ fallback ใน validation เพื่อให้ฟิลด์ที่เป็นค่าเริ่มต้นหรือว่างเปรียบเทียบได้อย่างถูกต้อง
 
 ## Rollback plan
-- นำการเปลี่ยนแปลงใน `frontend/src/components/PDFProvisionTab.tsx` ออกโดยลบฟิลด์ `groups` ออกจาก `buildProvisionPayload()` และกู้คืนฟังก์ชัน `_execute_ad_creation` ใน `worker/tasks/sync_user.py` กลับเป็นรุ่นก่อนหน้า
+- นำการเปลี่ยนแปลงใน `frontend/src/components/PDFProvisionTab.tsx` ออกโดยลบฟิลด์ `groups` ออกจาก `buildProvisionPayload()` และกู้คืนฟังก์ชัน `_execute_ad_creation` ใน `worker/tasks/sync_user.py` และ `worker/services/ad_service.py` กลับเป็นรุ่นก่อนหน้า

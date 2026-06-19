@@ -373,7 +373,7 @@ class ActiveDirectoryService:
                             escaped_group = group.replace('\\', '\\5c').replace('*', '\\2a').replace('(', '\\28').replace(')', '\\29').replace('\x00', '\\00')
                             conn.search(
                                 search_base=self.base_dn,
-                                search_filter=f"(&(objectClass=group)(cn={escaped_group}))",
+                                search_filter=f"(&(objectClass=group)(|(sAMAccountName={escaped_group})(cn={escaped_group})))",
                                 search_scope=SUBTREE,
                                 attributes=['distinguishedName']
                             )
@@ -473,6 +473,8 @@ class ActiveDirectoryService:
             for prop_key, expected_val in expected_properties.items():
                 if prop_key == 'groups':
                     actual_groups = [g.split(',')[0].replace('CN=', '').lower().strip() for g in user.memberOf.values] if user.memberOf.values else []
+                    if "domain users" not in actual_groups:
+                        actual_groups.append("domain users")
                     expected_groups = [g.lower().strip() for g in expected_val]
                     missing_groups = [g for g in expected_groups if g not in actual_groups]
                     if missing_groups:
