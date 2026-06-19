@@ -113,6 +113,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
   const [rawJsonOutput, setRawJsonOutput] = useState<string>('{}');
   const [mappedJsonOutput, setMappedJsonOutput] = useState<string>('{}');
   const [autoFillPrintCode, setAutoFillPrintCode] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // --- STEP 2 FORM STATE ---
   const [firstName, setFirstName] = useState('');
@@ -437,6 +439,49 @@ const handleNameTyping = (first: string, last: string) => {
       console.error(e);
       addToast("ไม่สามารถเรียกสแกน PDF จาก URL ได้ จะเรียกค่าเริ่มต้นพนักงานสมชายแทน", "warning");
       loadPresetTemplate('somchai');
+    }
+  };
+
+  const handlePDFFileProcess = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      addToast("กรุณาเลือกหรือวางเฉพาะไฟล์เอกสาร PDF เท่านั้น", "warning");
+      return;
+    }
+
+    setParsingStatus('parsing');
+    addLog("PDF", `ส่งไฟล์ PDF ไปยังระบบ API สแกนหลักขององค์กร...: ${file.name}`, "INFO");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch('/api/v1/parse/file', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errDetails = await response.json().catch(() => ({}));
+        throw new Error(errDetails.detail || "HTTP error parsing PDF file");
+      }
+
+      const rawLayout = await response.json();
+      setRawJsonOutput(JSON.stringify(rawLayout, null, 4));
+
+      // Build simulated Ad maps
+      const mapped = mapLocalRawToADSchema(rawLayout);
+      setMappedJsonOutput(JSON.stringify(mapped, null, 4));
+
+      setParsingStatus('success');
+      addToast("ดึงข้อมูลและจำลองวิเคราะห์โครงสร้างพารามิเตอร์สำเร็จ!", "success");
+      addLog("PDF", "สกัดพารามิเตอร์โครงสร้างเรียบร้อยแล้ว", "SUCCESS");
+
+      // Set forms ready
+      populateFormFromExtractedMap(mapped);
+    } catch (e: any) {
+      console.error(e);
+      addToast(`ไม่สามารถสแกนไฟล์ PDF ได้: ${e.message || String(e)}`, "error");
+      setParsingStatus('idle');
     }
   };
 
@@ -1195,14 +1240,45 @@ const handleNameTyping = (first: string, last: string) => {
               </div>
             </div>
 
-            {/* Simulated Drag & Drop card */}
+            {/* Real Drag & Drop card */}
             <div
-              onClick={() => loadPresetTemplate('somchai')}
-              className="border-2 border-dashed border-outline-variant p-8 rounded-lg text-center bg-surface-container-lowest hover:border-primary hover:bg-slate-50/50 transition-all cursor-pointer select-none group"
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                  handlePDFFileProcess(e.dataTransfer.files[0]);
+                }
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed p-8 rounded-lg text-center transition-all cursor-pointer select-none group ${
+                isDragging 
+                  ? 'border-primary bg-primary/5 scale-[1.02] shadow-md ring-1 ring-primary/20' 
+                  : 'border-outline-variant bg-surface-container-lowest hover:border-primary hover:bg-slate-50/50'
+              }`}
             >
-              <Upload className="h-10 w-10 text-outline group-hover:text-primary mx-auto mb-2.5 transition-colors" />
-              <span className="text-xs font-bold text-slate-800 block mb-1">ลากไฟล์ PDF คำร้องมาวางที่นี่</span>
-              <span className="text-[10px] text-outline">คลิกจำลอง เพื่อเลือกใช้แม่แบบ พนักงานสมชาย กรทอง (Engineering)</span>
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept=".pdf"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    handlePDFFileProcess(e.target.files[0]);
+                  }
+                }}
+              />
+              <Upload className={`h-10 w-10 mx-auto mb-2.5 transition-all ${
+                isDragging ? 'text-primary scale-110' : 'text-outline group-hover:text-primary'
+              }`} />
+              <span className="text-xs font-bold text-slate-800 block mb-1">
+                {isDragging ? 'วางไฟล์ที่นี่เพื่อเริ่มสแกน' : 'ลากไฟล์ PDF คำร้องมาวางที่นี่ หรือคลิกเพื่ออัปโหลด'}
+              </span>
+              <span className="text-[10px] text-outline">รองรับเฉพาะเอกสารไฟล์ PDF เท่านั้น</span>
             </div>
 
             <div className="bg-surface-container-low p-4 rounded-lg">

@@ -1,24 +1,35 @@
 ## Goal
-Enable double-click folder navigation inside the main AD Explorer list view (`ADExplorerTab.tsx`), allowing users to double-click an OU, container, or domain to open it, list its children, and automatically expand all parent folders in the left sidebar console tree.
+Enable real PDF file drag-and-drop and click-to-upload functionality inside the IT Resource Request provisioning panel (`PDFProvisionTab.tsx`), linking it directly to the backend's `/api/v1/parse/file` multipart parser endpoint.
 
 ## Assumptions
-- Custom and standard container object types are `ou`, `container`, and `domain`.
-- React state `selectedOUDn` and `expandedOUs` are the sources of truth for list navigation and sidebar tree expansion.
+- The backend `/api/v1/parse/file` endpoint accepts a `file` field via `multipart/form-data` and outputs the extracted JSON document structure.
+- We can load the Windows Tahoma or local TrueType fonts to generate the PDFs for manual/automatic testing.
 
 ## Plan
 
-### Step 1: Implement Double-Click Navigation & Tree Expansion Sync in `ADExplorerTab.tsx`
-- **Files**: [ADExplorerTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/ADExplorerTab.tsx)
+### Step 1: Add Drop State & File Ref in `PDFProvisionTab.tsx`
+- **Files**: [PDFProvisionTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/PDFProvisionTab.tsx)
 - **Change**:
-  - Update `handleRowDoubleClick` to detect if the double-clicked item is of type `ou`, `container`, or `domain`.
-  - If so, update `selectedOUDn` to the item's `dn` and clear `selectedRowIndex`.
-  - Parse the item's DN hierarchy (using non-escaped comma regex split) to recursively resolve all parent OUs, and merge them as expanded (`true`) in the `expandedOUs` state.
-- **Verify**: Compile the frontend project using:
-  `npx tsc --noEmit` inside `frontend/`
+  - Add `isDragging` state variable (`useState<boolean>(false)`).
+  - Add `fileInputRef` (`useRef<HTMLInputElement>(null)`).
+
+### Step 2: Implement Local PDF Upload Parser Handler in `PDFProvisionTab.tsx`
+- **Files**: [PDFProvisionTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/PDFProvisionTab.tsx)
+- **Change**:
+  - Implement `handlePDFFileProcess(file: File)` to validate the file extension (must end with `.pdf`).
+  - Send the file as a `multipart/form-data` payload containing the `file` key to the `/api/v1/parse/file` REST endpoint.
+  - Parse the JSON response, map the fields using `mapLocalRawToADSchema`, and populate the state using `populateFormFromExtractedMap`.
+
+### Step 3: Update Dropzone UI inside `PDFProvisionTab.tsx`
+- **Files**: [PDFProvisionTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/PDFProvisionTab.tsx)
+- **Change**:
+  - Bind drag over, drag leave, and drop events (`onDragOver`, `onDragLeave`, `onDrop`) to the upload area.
+  - Add a hidden file input element linked to the click event on the dropzone.
+  - Render dynamic styling for the active drag state (subtle scaling, glow, border highlight) to provide an premium experience.
+
+### Step 4: Verification
+- **Verify**: Run `npx tsc --noEmit` and `npm run build` in the `frontend` folder to ensure clean compilation.
 
 ## Risks & mitigations
-- **Risk**: DN path parsing using simple comma splits might break if OUs have escaped commas in their names.
-- **Mitigation**: Use the regex `/(?<!\\),/` to split path components safely, avoiding splits on escaped commas.
-
-## Rollback plan
-- Revert the modifications to `ADExplorerTab.tsx` using `git checkout`.
+- **Risk**: User drops an invalid or corrupted file type.
+- **Mitigation**: Validate the extension client-side (`endsWith('.pdf')`) and wrap the fetch in a try/catch block with clear toast alerts.

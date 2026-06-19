@@ -1,28 +1,24 @@
-# Brainstorm: Enable Deep Nested Sub-OU Navigation in AD Explorer Tab
+# Brainstorm: Enable Real PDF Drag-and-Drop in PDFProvisionTab
 
 ## Goal
-Enable seamless navigation into deep nested sub-OUs and containers inside the main AD Explorer view (`ADExplorerTab.tsx`). Users should be able to double-click an OU or container in the data table to navigate into it, update the list view, and auto-expand its parent folders in the left sidebar Console Tree.
+Enable real PDF file drag-and-drop and click-to-upload support in `PDFProvisionTab.tsx` so users can upload actual IT Resource Request PDFs and parse them on the backend via the `/api/v1/parse/file` endpoint.
 
 ## Constraints
-- Align with the existing navigation and selection states (`selectedOUDn`, `expandedOUs`).
-- Ensure no regression on double-click behavior for Users and Groups.
+- Must maintain all existing parsing, logging, and toast hooks.
+- Zero-change to current layout styles unless adding drag-state styling.
+- Prevent default browser behaviors (such as opening the dropped PDF in a new tab).
 
-## Known context
-- **Current Limitation**: Double-clicking an OU or container in the list table displays a toast saying "Properties viewer is restricted to User and Group objects only" instead of navigating inside the folder.
-- **Tree Expansion Syncing**: When navigating deep into sub-OUs via list view double-clicks, the left panel sidebar Console Tree should automatically expand all parent folders in the hierarchy to maintain visual sync.
-
-## Risks
-- Incorrectly parsing DN path parts to expand parents could cause rendering crashes if the DN has escaped commas.
-- Mitigation: Parse parent DNs by splitting on commas not preceded by a backslash (`(?<!\\),` or standard split if regex isn't needed, but regex is safer).
-
-## Options (2–4)
-- **Option 1**: Allow double-clicking OUs in the list view to set `selectedOUDn`, but do not expand the parent chain in the left tree.
-- **Option 2**: Allow double-clicking OUs to navigate (`selectedOUDn`), auto-expand the navigated OU, and recursively resolve and expand all parent DNs in the left tree to keep both views perfectly synchronized.
+## Options
+- **Option 1**: Use a third-party library like `react-dropzone`.
+  - *Con*: Introduces a new dependency which might cause version mismatch or size bloat.
+- **Option 2**: Implement native HTML5 Drag and Drop APIs inside React, utilizing state for the active drag visual cues and a hidden `<input type="file">`.
+  - *Pro*: Native, lightweight, fully control styling and scale/glow transitions.
 
 ## Recommendation
-- **Option 2**: Implement full double-click navigation for folders (`ou`, `container`, `domain`) in `ADExplorerTab.tsx`, and automatically expand the entire parent DN chain in the left sidebar.
+- **Option 2** is recommended because it is lightweight, keeps package sizes small, and allows tailored Windows/Tailwind styling transitions.
 
-## Acceptance criteria
-1. Double-clicking an OU, container, or domain in the list table navigates into it and displays its contents.
-2. The left-hand sidebar tree auto-expands to match the selected sub-OU, showing the complete parent hierarchy.
-3. User and Group double-clicks continue to open the Properties Modal as expected.
+## Acceptance Criteria
+1. Dragging a file over the card area shows a visual highlight (e.g. highlight borders, scale up slightly).
+2. Dropping a `.pdf` file triggers backend parsing via `api/v1/parse/file` and populates the form inputs with extracted employee details.
+3. Clicking the dropzone area triggers the browser's native file picker to select a PDF.
+4. Dropping non-PDF files triggers a warning toast and halts.
