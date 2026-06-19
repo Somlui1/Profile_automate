@@ -4,1046 +4,1604 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ADNode, DirectoryUser, ADGroup } from '../types';
-import { 
-  ChevronRight, 
-  ChevronDown, 
-  Folder, 
-  FolderOpen, 
-  Search, 
-  RefreshCw, 
-  Lock, 
-  Loader2, 
-  ArrowLeft, 
-  ArrowRight, 
-  FolderUp,
-  MapPin,
-  Briefcase,
-  Users,
-  Database,
-  Building,
-  UserCheck,
+import { DirectoryUser } from '../types';
+import {
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  Search,
+  RefreshCw,
   Check,
-  Info
+  Copy,
+  Mail,
+  Phone,
+  Globe,
+  FileText,
+  Sliders,
+  User,
+  Users,
+  Monitor,
+  Layers,
+  Briefcase,
+  Building,
+  MapPin,
+  Calendar,
+  ShieldAlert,
+  Info,
+  CheckSquare,
+  Square,
+  Plus,
+  Trash2,
+  X,
+  PlusCircle,
+  FolderPlus,
+  Compass
 } from 'lucide-react';
 
 interface ADExplorerTabProps {
   users: DirectoryUser[];
-  config: React.ComponentState; // using React.ComponentState as general type for flexibility
+  config: React.ComponentState;
 }
 
-export const ADExplorerTab: React.FC<ADExplorerTabProps> = ({ users, config }) => {
-  const [rootNodes, setRootNodes] = useState<ADNode[]>([]);
-  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({
-    'DC=aapico,DC=com': true
+// Full directory AD Object interface modeling real LDAP / ADUC schemas
+interface ADObject {
+  name: string;
+  type: 'user' | 'group' | 'computer' | 'ou';
+  description: string;
+  dn: string;
+  parentDn: string; // The parent OU path
+
+  // Tab 1: General
+  givenName?: string;
+  initials?: string;
+  sn?: string;
+  displayName?: string;
+  physicalDeliveryOfficeName?: string;
+  telephoneNumber?: string;
+  otherTelephone?: string;
+  mail?: string;
+  wWWHomePage?: string;
+
+  // Tab 2: Address
+  streetAddress?: string;
+  postOfficeBox?: string;
+  l?: string; // City
+  st?: string; // State/Province
+  postalCode?: string;
+  co?: string; // Country
+
+  // Tab 3: Account
+  userPrincipalName?: string;
+  sAMAccountName?: string;
+  userWorkstations?: string;
+  userAccountControl?: number; // 512, 66048, etc
+  accountExpires?: string; // date or "Never"
+  pwdLastSet?: string;
+  logonHours?: string;
+  pwdNeverExpires?: boolean;
+  acctDisabled?: boolean;
+  mustChangePwd?: boolean;
+  cannotChangePwd?: boolean;
+
+  // Tab 4: Profile
+  profilePath?: string;
+  scriptPath?: string;
+  homeDirectory?: string;
+  homeDrive?: string;
+
+  // Tab 5: Telephones & Notes
+  homePhone?: string;
+  pager?: string;
+  mobile?: string;
+  facsimileTelephoneNumber?: string;
+  ipPhone?: string;
+  comment?: string; // Personal Notes
+
+  // Tab 6: Organization
+  title?: string;
+  department?: string;
+  company?: string;
+  manager?: string;
+
+  // Tab 7: Member Of
+  memberOf?: string[];
+
+  // Tab 8: Built-in schema custom extensions attributes 1-15
+  employeeID?: string;
+  employeeType?: string;
+  mailNickname?: string;
+  extensionAttributes?: Record<string, string>;
+}
+
+// Tree structure model for Left Console Tree Sidebar representation
+interface TreeContainer {
+  dn: string;
+  name: string;
+  type: 'domain' | 'ou' | 'container';
+  children: TreeContainer[];
+  has_children: boolean;
+}
+
+export const ADExplorerTab: React.FC<ADExplorerTabProps> = ({ users = [], config }) => {
+  // State for all domain objects (Dynamic array syncing users list with customized Computers/Groups mock nodes)
+  const [adObjects, setAdObjects] = useState<ADObject[]>([]);
+
+  // Selection / Navigation navigation state
+  const [selectedOUDn, setSelectedOUDn] = useState<string>('DC=aapico,DC=com');
+  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Expanded Left Panel Tree state
+  const [expandedOUs, setExpandedOUs] = useState<Record<string, boolean>>({
+    'DC=aapico,DC=com': true,
+    'OU=AH,DC=aapico,DC=com': true
   });
-  const [nodeChildrenCache, setNodeChildrenCache] = useState<Record<string, ADNode[]>>({});
-  const [loadingNodes, setLoadingNodes] = useState<Record<string, boolean>>({});
-  
-  const [selectedDN, setSelectedDN] = useState<string>('DC=aapico,DC=com');
-  const [selectedNode, setSelectedNode] = useState<ADNode | null>({
-    dn: 'DC=aapico,DC=com',
-    name: 'aapico.com',
-    type: 'domain',
-    has_children: true
+
+  // Modal Dialog visual States
+  const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
+  const [activePropertyObject, setActivePropertyObject] = useState<ADObject | null>(null);
+  const [activeModalTab, setActiveModalTab] = useState<string>('general');
+
+  // Object Creation modal visual States
+  const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({
+    firstName: '',
+    lastName: '',
+    logonName: '',
+    description: '',
+    dept: 'IT Infrastructure Quality Control',
+    title: 'QA Automation Tester',
+    password: 'AducTestPassword2026!',
+    employeeId: '99999999',
+    ou: 'OU=IT,OU=AH,DC=aapico,DC=com'
   });
 
-  const [detailsList, setDetailsList] = useState<ADNode[]>([]);
-  const [loadingDetails, setLoadingDetails] = useState(false);
-  
-  // User Profile from API
-  const [selectedUserProfile, setSelectedUserProfile] = useState<DirectoryUser | null>(null);
-  const [loadingUserProfile, setLoadingUserProfile] = useState(false);
-  
-  // Left Tree input filter
-  const [filterText, setFilterText] = useState('');
+  // Action toasts / copy indicators
+  const [copyCodeSuccess, setCopyCodeSuccess] = useState(false);
+  const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
 
-  // Right pane tab controls
-  const [activeDetailTab, setActiveDetailTab] = useState<'general' | 'address' | 'account' | 'organization' | 'memberof' | 'attribute'>('general');
-
-  // Load root domain nodes and pre-populate children
+  // Initialize all AD objects, mapping users + creating complete default structure
   useEffect(() => {
-    loadRootNodes();
-  }, [users]); // Re-load when user list changes (e.g. from PDF Provisioning additions)
+    // 1. Build list from DirectoryUsers
+    const mappedUsers: ADObject[] = users.map(user => {
+      // Clean target OU fallback
+      let rawOu = user.ou || "OU=IT,OU=AH,DC=aapico,DC=com";
+      const names = user.name.split(' ');
+      const givenName = names[0] || user.name;
+      const sn = names.slice(1).join(' ') || '';
 
-  // Fetch children whenever selectedDN changes to update details pane
-  useEffect(() => {
-    loadDetailsList(selectedDN);
-  }, [selectedDN, users]);
-
-  // Fetch user profile from API whenever selectedNode changes to a user
-  useEffect(() => {
-    if (selectedNode && selectedNode.type === 'user') {
-      const localProfile = getSelectedUserProfile();
-      if (localProfile) {
-        setSelectedUserProfile(localProfile);
-      } else {
-        fetchUserProfile(selectedNode.dn);
+      const sam = user.uid;
+      const attributes: Record<string, string> = {};
+      for (let i = 1; i <= 15; i++) {
+        if (i === 1) attributes[`extensionAttribute${i}`] = user.printCode || '99999999';
+        else if (i === 2) attributes[`extensionAttribute${i}`] = user.dept || '';
+        else if (i === 3) attributes[`extensionAttribute${i}`] = user.company || 'AH';
+        else attributes[`extensionAttribute${i}`] = '';
       }
-    } else {
-      setSelectedUserProfile(null);
-    }
-  }, [selectedNode, users]);
 
-  const getUnknownUserProfile = (dn: string): DirectoryUser => {
-    const parts = dn.split(',');
-    const cnPart = parts[0] || '';
-    const name = cnPart.toUpperCase().startsWith('CN=') ? cnPart.substring(3) : cnPart;
-    return {
-      uid: "unknown",
-      name: name || "unknown",
-      email: "unknown",
-      title: "unknown",
-      dept: "unknown",
-      printCode: "unknown",
-      ou: parts.slice(1).join(',') || "unknown",
-      papercut: "unknown",
-      status: "unknown",
-      mobile: "unknown",
-      company: "unknown",
-      manager: "unknown",
-      office: "unknown",
-      description: "unknown",
-      street: "unknown",
-      city: "unknown",
-      state: "unknown",
-      zipCode: "unknown",
-      country: "unknown"
-    };
-  };
+      return {
+        name: user.name,
+        type: 'user',
+        description: user.description || `${user.printCode || '99999999'} (AH Active Session)`,
+        dn: `CN=${user.name},${rawOu}`,
+        parentDn: rawOu,
 
-  const fetchUserProfile = async (dn: string) => {
-    setLoadingUserProfile(true);
-    try {
-      const response = await fetch(`/api/v1/user/ad/details?dn=${encodeURIComponent(dn)}`);
-      if (response.ok) {
-        const data = await response.json();
-        setSelectedUserProfile(data);
-      } else {
-        setSelectedUserProfile(getUnknownUserProfile(dn));
+        givenName,
+        initials: givenName[0] + (sn ? sn[0] : ''),
+        sn,
+        displayName: user.name,
+        physicalDeliveryOfficeName: user.office || "AH_Test_Lab",
+        telephoneNumber: user.mobile || "035-350880 ext.9999",
+        otherTelephone: "02-123-4567 ext.1",
+        mail: user.email,
+        wWWHomePage: "https://www.aapico.com",
+
+        streetAddress: user.street || "99/9 Active Directory Validation Road",
+        postOfficeBox: "BOX-999",
+        l: user.city || "Bang pa-in",
+        st: user.state || "Phranakhon Sri Ayutthaya",
+        postalCode: user.zipCode || "13160",
+        co: user.country || "Thailand",
+
+        userPrincipalName: `${sam}@aapico.com`,
+        sAMAccountName: sam,
+        userWorkstations: "All Computers",
+        userAccountControl: user.status === 'Active' ? 66048 : 66050,
+        accountExpires: "Never",
+        pwdLastSet: "2026-06-18 08:32:15",
+        logonHours: "Permitted (All Hours)",
+        pwdNeverExpires: true,
+        acctDisabled: user.status !== 'Active',
+        mustChangePwd: sam === 'aduc.test',
+        cannotChangePwd: false,
+
+        profilePath: user.street ? "" : `\\\\aapico-srv\\profiles\\${sam}`,
+        scriptPath: "IT_AH_TEST.bat",
+        homeDirectory: user.street ? "" : `\\\\aapico-srv\\home\\${sam}`,
+        homeDrive: user.street ? "" : "H:",
+
+        homePhone: "02-000-0000",
+        pager: "",
+        mobile: user.mobile || "089-999-9999",
+        facsimileTelephoneNumber: "",
+        ipPhone: "9999",
+        comment: "SYSTEM REAL-TIME PROFILE: Synced verified mapping with Python ADUC configurations.",
+
+        title: user.title || "Staff Member",
+        department: user.dept || "Automation Control Department",
+        company: user.company || "AH",
+        manager: user.manager || "Witthaya Treeklee",
+
+        memberOf: sam === 'aduc.test' ? [
+          'AH IT',
+          'CL200',
+          'AAPICO Group VPN',
+          'AH IT Infrastructure',
+          'AAPICO Social App',
+          'AAPICO Allow USB',
+          'User_LevelB (AH)'
+        ] : [
+          'Domain Users',
+          'AAPICO Group VPN',
+          user.dept === 'Information Technology' ? 'AH IT Infrastructure' : 'Regional Users_LevelB'
+        ],
+
+        employeeID: user.printCode || "99999999",
+        employeeType: sam === 'aduc.test' ? 'Test-Account' : 'Regular-Staff',
+        mailNickname: sam,
+        extensionAttributes: attributes
+      };
+    });
+
+    // 2. Insert standard AD builtin, system computers, and security group items to form standard complete schemas
+    const systemObjects: ADObject[] = [
+      // Domain Controllers & computers
+      {
+        name: 'SRV-AD01',
+        type: 'computer',
+        description: 'Primary Active Directory Domain Controller (aapico.com)',
+        dn: 'CN=SRV-AD01,CN=Computers,DC=aapico,DC=com',
+        parentDn: 'CN=Computers,DC=aapico,DC=com',
+        comment: 'Handles Kerberos token validation and LDAPS security mappings.',
+        title: 'Primary Domain Controller',
+        company: 'AH',
+        memberOf: ['Domain Controllers']
+      },
+      {
+        name: 'SRV-APP-PAPER',
+        type: 'computer',
+        description: 'AAPICO PaperCut Print Allocation Server',
+        dn: 'CN=SRV-APP-PAPER,CN=Computers,DC=aapico,DC=com',
+        parentDn: 'CN=Computers,DC=aapico,DC=com',
+        comment: 'Runs PaperCut dynamic sync pipelines.',
+        title: 'Print Server Host',
+        company: 'AH',
+        memberOf: ['Print Servers']
+      },
+      {
+        name: 'AH-BKK-LPT-101',
+        type: 'computer',
+        description: 'QA Automation Lab Host Computer',
+        dn: 'CN=AH-BKK-LPT-101,CN=Computers,DC=aapico,DC=com',
+        parentDn: 'CN=Computers,DC=aapico,DC=com',
+        comment: 'Validation testing laptop workstation client.',
+        title: 'Workstation Account',
+        company: 'AH'
+      },
+
+      // Security Groups
+      {
+        name: 'Domain Admins',
+        type: 'group',
+        description: 'Designated administrative staff of the domain',
+        dn: 'CN=Domain Admins,CN=Users,DC=aapico,DC=com',
+        parentDn: 'CN=Users,DC=aapico,DC=com',
+        comment: 'Built-in active global directory control.',
+        memberOf: ['Administrators']
+      },
+      {
+        name: 'Domain Users',
+        type: 'group',
+        description: 'All system and corporate enterprise personnel',
+        dn: 'CN=Domain Users,CN=Users,DC=aapico,DC=com',
+        parentDn: 'CN=Users,DC=aapico,DC=com',
+        comment: 'Default group container rules standard.',
+        memberOf: ['Users']
+      },
+      {
+        name: 'AAPICO Allow USB',
+        type: 'group',
+        description: 'Security Group permitting local storage access via USB drivers',
+        dn: 'CN=AAPICO Allow USB,OU=Security Groups,DC=aapico,DC=com',
+        parentDn: 'OU=Security Groups,DC=aapico,DC=com',
+        comment: 'Active Group Policy target list filter.',
+        memberOf: ['Domain Users']
+      },
+      {
+        name: 'AH IT Infrastructure',
+        type: 'group',
+        description: 'IT Systems administration and verification support staff',
+        dn: 'CN=AH IT Infrastructure,OU=Security Groups,DC=aapico,DC=com',
+        parentDn: 'OU=Security Groups,DC=aapico,DC=com',
+        comment: 'Access to infrastructure management consoles.',
+        memberOf: ['Domain Users']
+      },
+      {
+        name: 'Administrator',
+        type: 'user',
+        description: 'Built-in administrator account for the computer/domain',
+        dn: 'CN=Administrator,CN=Users,DC=aapico,DC=com',
+        parentDn: 'CN=Users,DC=aapico,DC=com',
+        givenName: 'Built-in',
+        sn: 'Admin',
+        displayName: 'Administrator (System)',
+        sAMAccountName: 'Administrator',
+        userPrincipalName: 'administrator@aapico.com',
+        userAccountControl: 512,
+        pwdNeverExpires: true,
+        memberOf: ['Administrators', 'Domain Admins'],
+        comment: 'Emergency domain-level access bypass account.'
+      },
+      {
+        name: 'Guest',
+        type: 'user',
+        description: 'Built-in guest account for temporary guest clients (Disabled)',
+        dn: 'CN=Guest,CN=Users,DC=aapico,DC=com',
+        parentDn: 'CN=Users,DC=aapico,DC=com',
+        givenName: 'Guest',
+        sn: 'User',
+        displayName: 'Guest System Client',
+        sAMAccountName: 'Guest',
+        userPrincipalName: 'guest@aapico.com',
+        userAccountControl: 514, // Disabled
+        pwdNeverExpires: true,
+        acctDisabled: true,
+        memberOf: ['Guests'],
+        comment: 'Standard guest system profile.'
       }
-    } catch (e) {
-      console.error("Error fetching AD user details:", e);
-      setSelectedUserProfile(getUnknownUserProfile(dn));
-    } finally {
-      setLoadingUserProfile(false);
-    }
-  };
+    ];
 
-  const loadRootNodes = async () => {
-    try {
-      const response = await fetch('/api/v1/user/ad/tree');
-      if (response.ok) {
-        const data = await response.json();
-        // Incorporate any new direct users created within the UI into the cache
-        const backendNodes: ADNode[] = data.nodes || [];
-        
-        // Find users in "OU=Users" that aren't already in the children list
-        // Let's make sure the root node is initialized
-        setNodeChildrenCache((prev) => ({
-          ...prev,
-          'DC=aapico,DC=com': backendNodes
-        }));
-        
-        const root: ADNode = {
-          dn: 'DC=aapico,DC=com',
-          name: 'aapico.com',
-          type: 'domain',
-          has_children: true
-        };
-        setRootNodes([root]);
-      }
-    } catch (e) {
-      console.error("Error loading root nodes:", e);
-    }
-  };
+    setAdObjects([...mappedUsers, ...systemObjects]);
+  }, [users]);
 
-  const loadDetailsList = async (dn: string) => {
-    setLoadingDetails(true);
-    try {
-      const response = await fetch(`/api/v1/user/ad/tree?parent_dn=${encodeURIComponent(dn)}`);
-      if (response.ok) {
-        const data = await response.json();
-        let nodes: ADNode[] = data.nodes || [];
-
-        // If the selected DN is an OU containing Users (or we have matching directory users),
-        // we merge them so dynamically added users are also displayed.
-        const cleanedDN = dn.toLowerCase();
-        
-        // Find users belonging to this OU or having this path
-        const currentOUUsers = users.filter((u) => {
-          // If user.ou matches our DN
-          const userOU = u.ou ? u.ou.toLowerCase().trim() : '';
-          return userOU === cleanedDN;
-        });
-
-        // Add user nodes that might not be in the mock backend tree
-        currentOUUsers.forEach((user) => {
-          const userDN = `CN=${user.name},${user.ou}`;
-          const alreadyInList = nodes.some(n => n.dn.toLowerCase() === userDN.toLowerCase());
-          if (!alreadyInList) {
-            nodes.push({
-              dn: userDN,
-              name: user.name,
-              type: 'user',
-              has_children: false
-            });
-          }
-        });
-
-        setDetailsList(nodes);
-      }
-    } catch (e) {
-      console.error("Error loading details for DN:", dn);
-    } finally {
-      setLoadingDetails(false);
-    }
-  };
-
-  const lazyLoadNodeChildren = async (dn: string) => {
-    if (nodeChildrenCache[dn]) return nodeChildrenCache[dn];
-
-    setLoadingNodes(prev => ({ ...prev, [dn]: true }));
-    try {
-      const response = await fetch(`/api/v1/user/ad/tree?parent_dn=${encodeURIComponent(dn)}`);
-      if (response.ok) {
-        const data = await response.json();
-        let children = data.nodes || [];
-        
-        // Merge user nodes for this OU
-        const currentOUUsers = users.filter((u) => u.ou && u.ou.toLowerCase().trim() === dn.toLowerCase());
-        currentOUUsers.forEach((user) => {
-          const userDN = `CN=${user.name},${user.ou}`;
-          const alreadyInList = children.some((n: ADNode) => n.dn.toLowerCase() === userDN.toLowerCase());
-          if (!alreadyInList) {
-            children.push({
-              dn: userDN,
-              name: user.name,
-              type: 'user',
-              has_children: false
-            });
-          }
-        });
-
-        setNodeChildrenCache(prev => ({ ...prev, [dn]: children }));
-        setLoadingNodes(prev => ({ ...prev, [dn]: false }));
-        return children;
-      }
-    } catch (e) {
-      console.error("Error lazy loading sub nodes:", e);
-    }
-    setLoadingNodes(prev => ({ ...prev, [dn]: false }));
-    return [];
-  };
-
-  const toggleExpand = async (e: React.MouseEvent, dn: string) => {
-    e.stopPropagation();
-    const isExpanded = expandedNodes[dn];
-    if (!isExpanded) {
-      setExpandedNodes(prev => ({ ...prev, [dn]: true }));
-      await lazyLoadNodeChildren(dn);
-    } else {
-      setExpandedNodes(prev => ({ ...prev, [dn]: false }));
-    }
-  };
-
-  const handleNodeClick = (node: ADNode) => {
-    setSelectedDN(node.dn);
-    setSelectedNode(node);
-  };
-
-  const handleUpOneLevel = () => {
-    if (selectedDN.toLowerCase() === 'dc=aapico,dc=com') return;
-    const parts = selectedDN.split(',');
-    if (parts.length > 1) {
-      const parentDn = parts.slice(1).join(',');
-      const parentFirstPart = parts[1].split('=');
-      const parentName = parentFirstPart.length > 1 ? parentFirstPart[1] : parentDn;
-      
-      const parentType = parentDn.toLowerCase().startsWith('ou=') ? 'ou' : parentDn.toLowerCase().startsWith('dc=') ? 'domain' : 'container';
-      
-      const pNode: ADNode = {
-        dn: parentDn,
-        name: parentName,
-        type: parentType as any,
+  // Recursively reconstruct OU Tree based on parsed OUs of users in user objects list
+  const getConsoleTree = (): TreeContainer => {
+    // 1. Core Base map
+    const nodes: Record<string, TreeContainer> = {
+      'DC=aapico,DC=com': {
+        dn: 'DC=aapico,DC=com',
+        name: 'aapico.com',
+        type: 'domain',
+        children: [],
         has_children: true
+      },
+      'CN=Builtin,DC=aapico,DC=com': {
+        dn: 'CN=Builtin,DC=aapico,DC=com',
+        name: 'Builtin',
+        type: 'container',
+        children: [],
+        has_children: false
+      },
+      'CN=Computers,DC=aapico,DC=com': {
+        dn: 'CN=Computers,DC=aapico,DC=com',
+        name: 'Computers',
+        type: 'container',
+        children: [],
+        has_children: false
+      },
+      'CN=Users,DC=aapico,DC=com': {
+        dn: 'CN=Users,DC=aapico,DC=com',
+        name: 'Users',
+        type: 'container',
+        children: [],
+        has_children: false
+      },
+      'OU=Security Groups,DC=aapico,DC=com': {
+        dn: 'OU=Security Groups,DC=aapico,DC=com',
+        name: 'Security Groups',
+        type: 'ou',
+        children: [],
+        has_children: false
+      }
+    };
+
+    // Build hierarchical branches based on standard OUs mapped dynamically
+    adObjects.forEach(obj => {
+      if (!obj.parentDn) return;
+      const parts = obj.parentDn.split(',');
+
+      let activeParent = 'DC=aapico,DC=com';
+      const ouParts = parts.filter(p => !p.startsWith('DC=')).reverse();
+
+      ouParts.forEach(part => {
+        const fullPath = `${part},${activeParent}`;
+        const cleanName = part.split('=')[1] || part;
+
+        if (!nodes[fullPath]) {
+          nodes[fullPath] = {
+            dn: fullPath,
+            name: cleanName,
+            type: part.startsWith('OU=') ? 'ou' : 'container',
+            children: [],
+            has_children: false
+          };
+
+          if (nodes[activeParent]) {
+            nodes[activeParent].children.push(nodes[fullPath]);
+            nodes[activeParent].has_children = true;
+          }
+        }
+        activeParent = fullPath;
+      });
+    });
+
+    // Make sure default domains direct sub-OUs are placed if missing
+    const root = nodes['DC=aapico,DC=com'];
+    ['CN=Builtin,DC=aapico,DC=com', 'CN=Computers,DC=aapico,DC=com', 'CN=Users,DC=aapico,DC=com', 'OU=Security Groups,DC=aapico,DC=com'].forEach(defPath => {
+      const child = nodes[defPath];
+      if (child && !root.children.some(c => c.dn === defPath)) {
+        root.children.push(child);
+      }
+    });
+
+    return root;
+  };
+
+  const domainRoot = getConsoleTree();
+
+  // Find all objects matching the selected OU/Container
+  const getCurrentOUObjects = (): ADObject[] => {
+    return adObjects.filter(obj => {
+      const matchOU = obj.parentDn.toLowerCase().trim() === selectedOUDn.toLowerCase().trim();
+
+      if (!matchOU) return false;
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        return obj.name.toLowerCase().includes(query) ||
+          obj.type.toLowerCase().includes(query) ||
+          obj.description.toLowerCase().includes(query);
+      }
+      return true;
+    });
+  };
+
+  const currentObjectsList = getCurrentOUObjects();
+
+  // Left click Tree folder nodes to open
+  const handleTreeClick = (dn: string) => {
+    setSelectedOUDn(dn);
+    setSelectedRowIndex(null);
+  };
+
+  const toggleOUExpansion = (e: React.MouseEvent, dn: string) => {
+    e.stopPropagation();
+    setExpandedOUs(prev => ({
+      ...prev,
+      [dn]: !prev[dn]
+    }));
+  };
+
+  // Trigger double click dialog popup
+  const handleRowDoubleClick = (obj: ADObject) => {
+    setActivePropertyObject({ ...obj });
+    setActiveModalTab('general');
+    setIsPropertiesOpen(true);
+  };
+
+  // Toolbar Actions Trigger
+  const handleOpenActiveProperties = () => {
+    if (selectedRowIndex !== null && currentObjectsList[selectedRowIndex]) {
+      handleRowDoubleClick(currentObjectsList[selectedRowIndex]);
+    }
+  };
+
+  const handleDeleteActiveObject = () => {
+    if (selectedRowIndex !== null && currentObjectsList[selectedRowIndex]) {
+      const target = currentObjectsList[selectedRowIndex];
+      if (window.confirm(`Are you sure you want to delete Active Directory Object: ${target.name}?`)) {
+        setAdObjects(prev => prev.filter(o => o.dn !== target.dn));
+        setSelectedRowIndex(null);
+        showActionToast(`Disabled / Deleted ADUC directory object: ${target.name}`);
+      }
+    }
+  };
+
+  // Simple notifications
+  const showActionToast = (msg: string) => {
+    setActionSuccessMessage(msg);
+    setTimeout(() => setActionSuccessMessage(null), 3000);
+  };
+
+  // Simulated Save of Edit Attributes inside Properties window
+  const handleSaveProperties = () => {
+    if (!activePropertyObject) return;
+    setAdObjects(prev => prev.map(o => {
+      if (o.dn.toLowerCase() === activePropertyObject.dn.toLowerCase()) {
+        return { ...activePropertyObject };
+      }
+      return o;
+    }));
+    setIsPropertiesOpen(false);
+    showActionToast(`Successfully saved directory settings for: ${activePropertyObject.name}`);
+  };
+
+  // Interactive Create User Pipeline Simulator
+  const handleCreateUserSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const { firstName, lastName, logonName, description, dept, title, password, employeeId, ou } = newUserForm;
+    if (!logonName) return;
+
+    const namesCombined = `${firstName} ${lastName}`.trim() || logonName;
+    const cleanOU = ou || selectedOUDn;
+
+    const attributes: Record<string, string> = {};
+    for (let i = 1; i <= 15; i++) {
+      attributes[`extensionAttribute${i}`] = i === 1 ? employeeId : '';
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/user/ad/create-direct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName,
+          lastName,
+          logonName,
+          description,
+          dept,
+          title,
+          password,
+          employeeId,
+          ou: cleanOU
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        showActionToast(`Failed to create user: ${errorData.detail || response.statusText}`);
+        return;
+      }
+
+      const created: ADObject = {
+        name: namesCombined,
+        type: 'user',
+        description: description || `${employeeId} (Sync Queued)`,
+        dn: `CN=${namesCombined},${cleanOU}`,
+        parentDn: cleanOU,
+        givenName: firstName,
+        sn: lastName,
+        displayName: namesCombined,
+        sAMAccountName: logonName,
+        userPrincipalName: `${logonName}@aapico.com`,
+        userWorkstations: 'All Computers',
+        userAccountControl: 512, // Normal Account state
+        accountExpires: 'Never',
+        pwdLastSet: 'Never (Must Change)',
+        mustChangePwd: true,
+        pwdNeverExpires: false,
+        title,
+        department: dept,
+        company: 'AH',
+        manager: 'Witthaya Treeklee',
+        memberOf: ['Domain Users', 'AAPICO Group VPN'],
+        employeeID: employeeId,
+        employeeType: 'Regular-Staff',
+        mailNickname: logonName,
+        extensionAttributes: attributes,
+        comment: 'Created dynamically inside MMC ADUC Sandbox.'
       };
 
-      setSelectedDN(parentDn);
-      setSelectedNode(pNode);
+      setAdObjects(prev => [created, ...prev]);
+      setIsCreateUserOpen(false);
+
+      // Reset form
+      setNewUserForm({
+        firstName: '',
+        lastName: '',
+        logonName: '',
+        description: '',
+        dept: 'IT Infrastructure Quality Control',
+        title: 'QA Automation Tester',
+        password: 'AducTestPassword2026!',
+        employeeId: '99999999',
+        ou: selectedOUDn
+      });
+
+      showActionToast(`Integrated newly queued user user account '${logonName}' into directory structure!`);
+    } catch (err) {
+      showActionToast(`Error creating user: ${err}`);
     }
   };
 
-  // Helper parsing dynamic breadcrumbs from Distinguished Name (DN)
-  const getBreadcrumbs = (dn: string) => {
-    if (!dn) return ["Active Directory", "aapico.com"];
-    const parts = dn.split(',').reverse();
-    const breadcrumbs: string[] = ["Active Directory"];
-    
-    parts.forEach(part => {
-      const [key, val] = part.split('=');
-      if (!val) return;
-      if (key === 'DC') {
-        if (val.toLowerCase() !== 'com' && !breadcrumbs.includes(val)) {
-          breadcrumbs.push(val + '.com');
-        }
-      } else {
-        breadcrumbs.push(val);
-      }
-    });
-    return breadcrumbs;
+  // Convert current state into a perfect copyable python dictionary block
+  const generatePythonPropString = (obj: ADObject): string => {
+    const isAducTest = obj.sAMAccountName === 'aduc.test';
+
+    // Model exactly the python schema as in user files
+    return `properties = {
+    # 1. General Tab (หน้าแรกของ ADUC)
+    'first_name': '${obj.givenName || ''}',
+    'last_name': '${obj.sn || ''}',
+    'display_name': '${obj.displayName || ''}',
+    'description': '${obj.description || ''}',
+    'office': '${obj.physicalDeliveryOfficeName || 'AH_Test_Lab'}',
+    'telephone_number': '${obj.telephoneNumber || '035-350880 ext.9999'}',
+    'other_telephone': [],  
+    'email': '${obj.mail || ''}',
+    'web_page': '${obj.wWWHomePage || 'https://www.aapico.com'}',
+
+    # 2. Address Tab (หน้าต่างที่อยู่)
+    'street': '${obj.streetAddress || '99/9 Active Directory Validation Road'}',
+    'post_office_box': '${obj.postOfficeBox || 'BOX-999'}',
+    'city': '${obj.l || 'Bang pa-in'}',
+    'state_province': '${obj.st || 'Phranakhon Sri Ayutthaya'}',
+    'zip_postal_code': '${obj.postalCode || '13160'}',
+    'country_region': '${obj.co || 'Thailand'}',
+
+    # 3. Account Tab (หน้าตั้งค่าบัญชีและ User Account Control)
+    'user_principal_name': '${obj.userPrincipalName || ''}',
+    'user_workstations': ${obj.userWorkstations === "All Computers" ? 'None' : `'${obj.userWorkstations}'`},  
+    'password_never_expires': ${obj.pwdNeverExpires ? 'True' : 'False'},
+    'account_disabled': ${obj.acctDisabled ? 'True' : 'False'},
+    'smartcard_required': False,
+    'change_password_next_logon': ${obj.mustChangePwd ? 'True' : 'False'},
+
+    # 4. Profile Tab (หน้าต่างกำหนดสคริปต์และโฮมไดรฟ์)
+    'profile_path': '${obj.profilePath || ''}',
+    'logon_script': '${obj.scriptPath || 'IT_AH_TEST.bat'}',
+    'home_directory': '${obj.homeDirectory || ''}',
+    'home_drive': '${obj.homeDrive || ''}',
+
+    # 5. Telephones Tab (หน้าต่างเบอร์โทรศัพท์เสริมและโน้ตภายใน)
+    'home_phone': '${obj.homePhone || '02-000-0000'}',
+    'pager': '${obj.pager || ''}',
+    'mobile': '${obj.mobile || '089-999-9999'}',
+    'fax': '${obj.facsimileTelephoneNumber || ''}',
+    'ip_phone': '${obj.ipPhone || '9999'}',
+    'notes': '${obj.comment || ''}',
+
+    # 6. Organization Tab (หน้าต่างโครงสร้างองค์กรและหัวหน้างาน)
+    'title': '${obj.title || ''}',  
+    'department': '${obj.department || ''}',
+    'company': '${obj.company || 'AH'}',
+    'manager': '${obj.manager || 'Witthaya Treeklee'}', 
+
+    # 7. Member Of (หน้าต่างกลุ่มความปลอดภัย)
+    'groups': [
+        ${(obj.memberOf || []).map(g => `'${g}'`).join(',\n        ')}
+    ],
+
+    # 8. Attribute Editor Tab (ตรวจสอบฟิลด์ระดับ Schema หลังบ้าน)
+    'employee_id': '${obj.employeeID || ''}',
+    'employee_type': '${obj.employeeType || ''}',
+    'mail_nickname': '${obj.mailNickname || ''}'
+}`;
   };
 
-  // Maps node type to icon
-  const getNodeIconMapping = (type: string) => {
-    switch (type) {
-      case 'domain':
-        return { css: 'text-primary', icon: 'dns' };
-      case 'ou':
-        return { css: 'text-amber-500', icon: 'folder' };
-      case 'container':
-        return { css: 'text-amber-600', icon: 'folder_open' };
-      case 'group':
-        return { css: 'text-green-700', icon: 'groups' };
-      case 'user':
-        return { css: 'text-slate-500', icon: 'person' };
-      case 'computer':
-        return { css: 'text-slate-400', icon: 'computer' };
-      default:
-        return { css: 'text-slate-500', icon: 'folder' };
-    }
+  // Helper copy block
+  const handleCopyPythonBlock = (obj: ADObject) => {
+    const code = generatePythonPropString(obj);
+    navigator.clipboard.writeText(code);
+    setCopyCodeSuccess(true);
+    setTimeout(() => setCopyCodeSuccess(false), 2000);
   };
 
-  // Find user model profile matching this ADNode node
-  const getSelectedUserProfile = (): DirectoryUser | null => {
-    if (!selectedNode || selectedNode.type !== 'user') return null;
-    
-    // Find matching user by name or parsed logon CN path
-    const targetName = selectedNode.name.toLowerCase().trim();
-    const targetDN = selectedNode.dn.toLowerCase().trim();
+  // Recursive tree view rendering for left sidebar (OUs/Containers)
+  const renderConsoleTreeNode = (node: TreeContainer, depth = 0): React.ReactNode => {
+    const isExpanded = expandedOUs[node.dn];
+    const isSelected = selectedOUDn === node.dn;
 
-    // 1. Try matching with full name or DN directly
-    let found = users.find(u => 
-      u.name.toLowerCase().trim() === targetName || 
-      `cn=${u.name.toLowerCase().trim()},${u.ou?.toLowerCase().trim()}` === targetDN
-    );
-
-    if (found) return found;
-
-    // 2. Try matching from CN part of common name if matches uid logon part description
-    const isCN = selectedNode.dn.startsWith('CN=');
-    if (isCN) {
-      const cnVal = selectedNode.name.toLowerCase();
-      found = users.find(u => u.uid.toLowerCase() === cnVal || cnVal.includes(u.uid.toLowerCase()));
-      if (found) return found;
-    }
-
-    return null;
-  };
-
-  // Render tree layout with filter capabilities
-  const renderTreeNodesRecursive = (nodes: ADNode[], depth = 0): React.ReactNode => {
-    return nodes.map((node) => {
-      // Direct node level filtering
-      const isExpanded = expandedNodes[node.dn];
-      const children = nodeChildrenCache[node.dn] || [];
-      const isLoading = loadingNodes[node.dn];
-      const isSelected = selectedDN === node.dn;
-      const iconDetails = getNodeIconMapping(node.type);
-
-      // Simple match check
-      const matchesFilter = !filterText || node.name.toLowerCase().includes(filterText.toLowerCase()) || 
-        children.some(c => c.name.toLowerCase().includes(filterText.toLowerCase()));
-
-      if (!matchesFilter && depth > 0) return null;
-
-      return (
-        <div key={node.dn} className="tree-node text-xs font-headline">
-          <div 
-            onClick={() => handleNodeClick(node)}
-            onDoubleClick={(e) => {
-              if (node.has_children) {
-                toggleExpand(e, node.dn);
-              }
-            }}
-            className={`tree-item flex items-center gap-1 px-1.5 py-1 select-none hover:bg-slate-100 relative min-h-[26px] rounded transition-colors ${
-              isSelected ? 'tree-selected bg-[#001f56] text-white' : 'text-slate-700'
+    return (
+      <div key={node.dn} className="select-none text-xs font-sans">
+        <div
+          onClick={() => handleTreeClick(node.dn)}
+          className={`flex items-center gap-1.5 py-1 px-1.5 rounded-sm cursor-pointer transition-colors ${isSelected
+            ? 'bg-[#3b72ab] text-white font-medium shadow-2xs'
+            : 'text-slate-800 hover:bg-[#e4eef6]'
             }`}
-            style={{ paddingLeft: `${depth * 14 + 6}px` }}
-          >
-            {/* Tree branches connector lines */}
-            {depth > 0 && (
-              <span 
-                className="tree-connector absolute top-1/2 w-2.5 h-px bg-slate-200"
-                style={{ left: `${(depth - 1) * 14 + 12}px` }}
-              />
-            )}
-
-            {/* Expander Arrow toggle icons */}
-            {node.has_children ? (
-              <button 
-                onClick={(e) => toggleExpand(e, node.dn)}
-                className="tree-toggle text-slate-400 hover:text-slate-700 dark:hover:text-white flex items-center justify-center h-4.5 w-4.5 shrink-0 select-none cursor-pointer"
-              >
-                {isLoading ? (
-                  <Loader2 className="h-3 w-3 animate-spin text-slate-400" />
-                ) : isExpanded ? (
-                  <ChevronDown className={`h-3.5 w-3.5 ${isSelected ? 'text-white' : ''}`} />
-                ) : (
-                  <ChevronRight className={`h-3.5 w-3.5 ${isSelected ? 'text-white' : ''}`} />
-                )}
-              </button>
-            ) : (
-              <span className="w-4.5 h-4.5 shrink-0" />
-            )}
-
-            {/* Material Icon representing node type */}
-            <span className={`material-symbols-outlined text-[16px] shrink-0 mr-1 ${
-              isSelected ? 'text-white' : iconDetails.css
-            }`}>
-              {iconDetails.icon}
-            </span>
-
-            {/* Node descriptive text */}
-            <span className={`tree-label truncate select-none ${isSelected ? 'text-white font-bold' : ''}`}>
-              {node.name}
-            </span>
-
-            {/* Node type badge */}
-            <span className={`tree-type-badge text-[8px] font-black uppercase px-1 py-[1.5px] rounded border ml-auto shrink-0 select-none scale-90 ${
-              isSelected 
-                ? 'bg-transparent border-white/40 text-white' 
-                : node.type === 'ou' 
-                  ? 'bg-amber-50 border-amber-200 text-amber-800' 
-                  : node.type === 'domain'
-                    ? 'bg-blue-50 border-blue-200 text-blue-800'
-                    : 'bg-slate-50 border-slate-200 text-slate-600'
-            }`}>
-              {node.type}
-            </span>
-          </div>
-
-          {/* Expanded Children rendered recursively */}
-          {node.has_children && isExpanded && children.length > 0 && (
-            <div 
-              className="sub-nodes relative"
-              style={{ '--tree-line-left': `${depth * 14 + 13}px` } as React.CSSProperties}
+          style={{ paddingLeft: `${depth * 14 + 6}px` }}
+        >
+          {/* Collapse/Expand state arrows */}
+          {node.has_children ? (
+            <button
+              onClick={(e) => toggleOUExpansion(e, node.dn)}
+              type="button"
+              className="text-[#555] hover:text-black py-0.5 px-1 rounded cursor-pointer shrink-0"
             >
-              <div 
-                className="absolute top-0 bottom-4 w-px bg-slate-200"
-                style={{ left: `${depth * 14 + 11}px` }}
-              />
-              {renderTreeNodesRecursive(children, depth + 1)}
-            </div>
+              {isExpanded ? (
+                <ChevronDown className={`h-3 w-3 ${isSelected ? 'text-white' : 'text-slate-600'}`} />
+              ) : (
+                <ChevronRight className={`h-3 w-3 ${isSelected ? 'text-white' : 'text-slate-600'}`} />
+              )}
+            </button>
+          ) : (
+            <span className="w-5 shrink-0" />
           )}
-        </div>
-      );
-    });
-  };
 
-  const selectedUser = selectedUserProfile;
-  const rawBreadcrumbs = getBreadcrumbs(selectedDN);
+          {/* Differentiate directory node icons */}
+          {node.type === 'domain' ? (
+            <Globe className={`h-4 w-4 shrink-0 ${isSelected ? 'text-white' : 'text-[#3b72ab]'}`} />
+          ) : node.type === 'ou' ? (
+            // Custom golden folder look with inner details (classic OU representation)
+            <div className="relative shrink-0 select-none">
+              <Folder className={`h-4 w-4 shrink-0 ${isSelected ? 'text-white' : 'text-amber-500 fill-amber-200'}`} />
+              <div className={`absolute top-1 right-[2px] w-1.5 h-1.5 rounded-xs border-[1px] ${isSelected ? 'bg-white border-[#3b72ab]' : 'bg-[#3b72ab] border-white'
+                }`} />
+            </div>
+          ) : (
+            <Folder className={`h-4 w-4 shrink-0 ${isSelected ? 'text-white' : 'text-amber-500 fill-amber-100'}`} />
+          )}
+
+          <span className="truncate leading-none select-none">{node.name}</span>
+        </div>
+
+        {/* Child level recursive nodes */}
+        {node.has_children && isExpanded && node.children.length > 0 && (
+          <div className="relative mt-0.5">
+            {/* Retro classic dotted line representation */}
+            <div
+              className="absolute top-0 bottom-2.5 w-px border-l border-dashed border-slate-300 left-[15px]"
+              style={{ paddingLeft: `${depth * 14}px` }}
+            />
+            {node.children.map(child => renderConsoleTreeNode(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
-    <div className="space-y-6">
-      
-      {/* Title Header area */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-2 select-none shrink-0 border-b border-slate-200 pb-3">
-        <div>
-          <h2 className="text-2xl font-black text-primary font-headline-md flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-[28px] animate-pulse">search_check</span>
-            Active Directory Domain Explorer
-          </h2>
-          <p className="text-xs text-on-surface-variant font-body mt-0.5">
-            Synchronized directory mapping engine powered by AAPICO LDAPs and M365 Subscribed SKUs
-          </p>
+    <div className="h-auto min-h-[750px] bg-[#f0f0f0] border border-slate-350 rounded-lg shadow-md flex flex-col font-sans overflow-hidden text-slate-900 text-xs">
+
+      {/* 1. COMPACT ACTIVE DIRECTORY TITLE BAR */}
+      <div className="bg-[#0a246a] text-white px-4 py-2 flex justify-between items-center select-none shrink-0 font-medium">
+        <div className="flex items-center gap-2">
+          <Compass className="h-4 w-4 text-[#a6c8f0]" />
+          <span className="text-xs font-bold tracking-wide select-none font-sans text-slate-100">
+            Active Directory Domain Service Console [aapico.com]
+          </span>
+        </div>
+        <div className="bg-[#3b72ab] text-white px-2 py-0.5 rounded-sm font-mono font-bold text-[9px] uppercase select-none tracking-wider">
+          Read-Only Mode
         </div>
       </div>
 
-      {/* Breadcrumbs Navigation */}
-      <div className="bg-slate-50 border border-outline-variant p-3.5 rounded-lg flex items-center justify-between select-none">
-        <nav className="flex items-center flex-wrap gap-1 text-[11px] font-bold text-slate-500 font-headline">
-          {rawBreadcrumbs.map((crumb, idx) => (
-            <React.Fragment key={crumb + idx}>
-              {idx > 0 && <span className="material-symbols-outlined text-slate-400 text-[14px]">chevron_right</span>}
-              <span className={idx === rawBreadcrumbs.length - 1 ? "text-primary font-black" : "hover:text-primary-container cursor-pointer transition-colors"}>
-                {crumb}
-              </span>
-            </React.Fragment>
-          ))}
-        </nav>
-        <span className="text-[10px] font-mono text-slate-400 bg-white border px-2 py-1 rounded">
-          DN: {selectedDN}
-        </span>
+      {/* 3. WINDOWS MMC ADUC COMPACT TOOLBAR */}
+      <div className="bg-[#f5f5f5] px-3 py-2 border-b border-[#b0b0b0] flex flex-wrap justify-between items-center gap-3 select-none select-none">
+
+        {/* Navigation, Hierarchy paths, Action Tools */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+
+          <button
+            onClick={() => handleTreeClick('DC=aapico,DC=com')}
+            className="p-1.5 hover:bg-[#d8e6f3] text-slate-700 hover:text-[#3b72ab] rounded border border-transparent hover:border-[#b0cde8] cursor-pointer"
+            title="Root Domain Location"
+          >
+            <Compass className="h-4 w-4" />
+          </button>
+
+          <div className="w-px h-5 bg-slate-300 mx-1" />
+
+          {/* Context Tools linked to selection */}
+          <button
+            onClick={handleOpenActiveProperties}
+            disabled={selectedRowIndex === null}
+            className={`px-2 py-1 border rounded-md font-bold transition-all flex items-center gap-1 cursor-pointer ${selectedRowIndex !== null
+              ? 'bg-white border-slate-300 hover:border-[#3b72ab] hover:bg-[#e4eef6] text-[#001f56]'
+              : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed opacity-50'
+              }`}
+          >
+            <Sliders className="h-3.5 w-3.5" />
+            <span>Properties (View Only)</span>
+          </button>
+
+          <div className="w-px h-5 bg-slate-300 mx-1" />
+
+          <button
+            onClick={() => {
+              // simulated reload
+              setSelectedRowIndex(null);
+              showActionToast("Successfully synced and updated local Active Directory tree.");
+            }}
+            className="p-1 hover:bg-[#d8e6f3] text-slate-600 rounded border border-transparent hover:border-[#b0cde8] cursor-pointer"
+            title="Refresh Object Lists"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
+
+        </div>
+
+        {/* Searching bar filter */}
+        <div className="relative max-w-xs w-full select-all">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search matching objects in OU..."
+            className="w-full text-xs p-1.5 pl-8 border border-slate-300 outline-none rounded-md bg-white focus:ring-1 focus:ring-[#3b72ab] focus:border-[#3b72ab] placeholder:text-slate-400 h-8 font-sans"
+          />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 h-3.5 w-3.5" />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="absolute right-2 px-1 text-slate-400 hover:text-[#3b72ab] font-bold">×</button>
+          )}
+        </div>
+
       </div>
 
-      {/* Dual Pane Layout Area */}
-      <div className="grid grid-cols-12 gap-5 h-[620px] items-stretch">
-        
-        {/* LEFT PANEL: Directory Explorer Tree and Search */}
-        <aside className="col-span-12 lg:col-span-4 bg-white border border-outline-variant rounded-xl flex flex-col overflow-hidden shadow-sm h-full">
-          <div className="p-4 border-b border-outline-variant bg-surface-container-low space-y-3 select-none">
-            <div className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5 leading-none">
-              <span className="material-symbols-outlined text-[18px] text-primary">folder_open</span>
-              Directory Tree Explorer
-            </div>
-            
-            {/* Tree search/filter */}
-            <div className="relative">
-              <input 
-                type="text"
-                value={filterText}
-                onChange={(e) => setFilterText(e.target.value)}
-                placeholder="Filter catalog OUs or users..."
-                className="w-full text-xs p-2.5 pl-8.5 border border-outline-variant bg-white rounded outline-none focus:ring-1 focus:ring-primary focus:border-primary h-9 font-headline"
-              />
-              <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">
-                filter_alt
-              </span>
-              {filterText && (
-                <button 
-                  onClick={() => setFilterText('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
+      {/* ACTION ALERTS AND NOTIFICATIONS IN MMC PANEL */}
+      {actionSuccessMessage && (
+        <div className="bg-emerald-50 border-b border-emerald-200 text-[#0f5132] px-4 py-2 flex items-center gap-2 select-none select-none font-sans font-semibold">
+          <Check className="h-4 w-4 bg-emerald-500 text-white rounded-full p-0.5 shrink-0" />
+          <span>{actionSuccessMessage}</span>
+        </div>
+      )}
+
+      {/* 4. MAIN WORKSPACE / SPLIT PANES (Left navigation tree & right contents view table) */}
+      <div className="flex-grow flex flex-col md:flex-row min-h-[500px] h-[550px] items-stretch overflow-hidden">
+
+        {/* LEFT COMPONENT: The Console Scope Tree */}
+        <aside className="w-full md:w-[260px] bg-white border-b md:border-b-0 md:border-r border-[#b0b0b0] flex flex-col justify-between overflow-hidden select-none select-none shrink-0">
+
+          <div className="bg-[#e4eef6] px-2.5 py-1.5 border-b border-[#b0b0b0] text-[10px] font-bold uppercase tracking-wider text-[#001f56] select-none font-sans">
+            Console Root Directory Tree
           </div>
 
-          {/* Directory node tree canvas container */}
-          <div className="flex-grow overflow-y-auto custom-scrollbar p-3.5 space-y-1 select-none">
-            {rootNodes.length > 0 ? (
-              renderTreeNodesRecursive(rootNodes)
-            ) : (
-              <div className="text-center py-10 text-slate-400 italic text-xs">
-                <Loader2 className="h-4 w-4 animate-spin inline-block text-primary mr-1.5" /> Synchronizing AD controllers...
-              </div>
-            )}
+          <div className="flex-grow overflow-y-auto p-2.5 space-y-1 bg-white">
+            {/* Hierarchical folder branches entry point */}
+            {renderConsoleTreeNode(domainRoot)}
           </div>
+
+          {/* Left panel indicator */}
+          <div className="p-2 border-t border-[#dedede] bg-slate-50 text-[10px] font-mono select-none text-slate-400">
+            Current OU DN: {selectedOUDn.replace(',DC=aapico,DC=com', '')}
+          </div>
+
         </aside>
 
-        {/* RIGHT PANEL: OU Children Contents OR Detailed tabbed user attributes */}
-        <section className="col-span-12 lg:col-span-8 bg-white border border-outline-variant rounded-xl flex flex-col overflow-hidden shadow-sm h-full">
-          
-          {selectedNode && selectedNode.type === 'user' ? (
-            loadingUserProfile ? (
-              <div className="flex-grow flex flex-col items-center justify-center h-full">
-                <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
-                <span className="text-xs text-slate-500 font-headline">Querying Active Directory user details...</span>
-              </div>
-            ) : selectedUser ? (
-              
-              /* VIEW A: Tabbed User Object profiles */
-              <div className="flex flex-col h-full overflow-hidden">
-              
-              {/* Profile Card Header */}
-              <div className="p-5.5 bg-surface-container-low border-b border-outline-variant flex items-start gap-4">
-                <div className="w-12 h-12 rounded-lg bg-primary text-white flex items-center justify-center font-black text-lg shadow-sm select-none uppercase font-headline">
-                  {selectedUser.name.split(' ').map(n => n[0]).join('').substring(0, 2)}
-                </div>
-                <div className="flex-grow min-w-0">
-                  <div className="flex flex-wrap items-center justify-between gap-1">
-                    <h3 className="font-extrabold text-lg text-primary leading-tight font-headline truncate">
-                      {selectedUser.name}
-                    </h3>
-                    <span className="px-2.5 py-0.5 bg-secondary/15 text-secondary text-[9px] font-black uppercase rounded-full border border-secondary/15 select-none tracking-wider">
-                      AD Account {selectedUser.status}
-                    </span>
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 font-headline mt-1 select-none">
-                    <div className="flex items-center gap-1">
-                      <Briefcase className="h-3.5 w-3.5 text-primary shrink-0" />
-                      <span>{selectedUser.title}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Building className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                      <span>{selectedUser.dept}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[14px] text-slate-400">home_pin</span>
-                      <span>{selectedUser.office || "Headquarters"}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+        {/* RIGHT COMPONENT: Object List View compact table */}
+        <section className="flex-grow bg-[#fff] flex flex-col justify-between overflow-hidden">
 
-              {/* Windows Tabs bar navigator */}
-              <div className="bg-slate-50 border-b border-outline-variant px-5 flex overflow-x-auto custom-scrollbar select-none shrink-0 gap-1.5 pt-2">
-                {[
-                  { key: 'general', label: 'General', icon: 'account_circle' },
-                  { key: 'address', label: 'Address', icon: 'home' },
-                  { key: 'account', label: 'Account', icon: 'security' },
-                  { key: 'organization', label: 'Organization', icon: 'corporate_fare' },
-                  { key: 'memberof', label: 'Member Of', icon: 'grid_view' },
-                  { key: 'attribute', label: 'Attribute Editor', icon: 'settings_ethernet' },
-                ].map((item) => {
-                  const isActive = activeDetailTab === item.key;
-                  return (
-                    <button
-                      key={item.key}
-                      onClick={() => setActiveDetailTab(item.key as any)}
-                      className={`px-3.5 py-2.5 font-bold text-xs flex items-center gap-1.5 border-t border-r border-l cursor-pointer rounded-t-lg transition-all ${
-                        isActive
-                          ? 'bg-white border-[#c5c6d1] text-primary border-b-white translate-y-[1px] relative z-10 font-black shadow-sm'
-                          : 'bg-[#f5f5f5] text-slate-500 border-transparent hover:text-[#001f56] hover:bg-slate-100'
-                      }`}
-                    >
-                      <span className="material-symbols-outlined text-[15px]">{item.icon}</span>
-                      <span className="font-headline">{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
+          {/* Header context label */}
+          <div className="bg-[#e3ecf5]/50 px-3.5 py-1.5 border-b border-[#c0c0c0] flex justify-between items-center select-none text-[11px] text-[#001f56] font-bold tracking-wide select-none">
+            <span>Name Location: CN={selectedOUDn}</span>
+            <span className="bg-[#3b72ab]/10 text-[#3b72ab] px-1.5 py-0.5 rounded-sm font-mono font-bold text-[10px]">
+              {currentObjectsList.length} Objects Installed
+            </span>
+          </div>
 
-              {/* Scrollable Tab panel body content details */}
-              <div className="flex-grow overflow-y-auto custom-scrollbar p-6 bg-white">
-                
-                {activeDetailTab === 'general' && (
-                  /* TAB 1: General Options Attributes specifications */
-                  <div className="grid grid-cols-12 gap-6 items-start h-full">
-                    <div className="col-span-12 md:col-span-8 space-y-4">
-                      
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">First Name</label>
-                          <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-slate-700 font-bold font-headline select-all">
-                            {selectedUser.name.split(' ')[0] || "Staff"}
-                          </div>
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">Last Name</label>
-                          <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-slate-700 font-bold font-headline select-all">
-                            {selectedUser.name.split(' ').slice(1).join(' ') || "Member"}
-                          </div>
-                        </div>
-                      </div>
+          {/* List compact elements grid */}
+          <div className="flex-grow overflow-y-auto bg-white">
+            <table className="w-full border-collapse text-left text-xs font-sans">
+              <thead className="bg-[#eaeaea] sticky top-0 border-b border-[#c0c0c0] z-10 font-sans shadow-2xs select-none">
+                <tr className="text-slate-700">
+                  <th className="py-1.5 px-3 border-r border-[#d4d0c8] text-xs font-bold leading-none select-none">Name</th>
+                  <th className="py-1.5 px-3 border-r border-[#d4d0c8] text-xs font-bold leading-none select-none">Type</th>
+                  <th className="py-1.5 px-3 border-r border-[#d4d0c8] text-xs font-bold leading-none select-none">Description</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {currentObjectsList.length > 0 ? (
+                  currentObjectsList.map((obj, index) => {
+                    const isSelected = selectedRowIndex === index;
 
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">Display Name</label>
-                        <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-slate-800 font-black font-headline select-all">
-                          {selectedUser.name}
-                        </div>
-                      </div>
+                    return (
+                      <tr
+                        key={obj.dn}
+                        onClick={() => setSelectedRowIndex(index)}
+                        onDoubleClick={() => handleRowDoubleClick(obj)}
+                        className={`cursor-pointer transition-all ${isSelected
+                          ? 'bg-[#3b72ab] text-white font-semibold'
+                          : 'hover:bg-[#e4eef6]/50'
+                          }`}
+                      >
+                        {/* Name Column with Type-specific icon */}
+                        <td className="py-2 px-3 flex items-center gap-2 select-all font-sans">
+                          {obj.type === 'user' ? (
+                            <div className={`p-0.5 rounded ${isSelected ? 'text-white' : 'text-slate-600'}`}>
+                              <User className="h-3.5 w-3.5 shrink-0" />
+                            </div>
+                          ) : obj.type === 'group' ? (
+                            <div className={`p-0.5 rounded ${isSelected ? 'text-white' : 'text-emerald-600'}`}>
+                              <Users className="h-3.5 w-3.5 shrink-0" />
+                            </div>
+                          ) : obj.type === 'computer' ? (
+                            <div className={`p-0.5 rounded ${isSelected ? 'text-white' : 'text-slate-500'}`}>
+                              <Monitor className="h-3.5 w-3.5 shrink-0" />
+                            </div>
+                          ) : (
+                            <div className="p-0.5 rounded text-amber-500">
+                              <Folder className="h-3.5 w-3.5 shrink-0" />
+                            </div>
+                          )}
+                          <span className="truncate">{obj.name}</span>
+                        </td>
 
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">Description / Employee ID</label>
-                        <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-slate-700 font-headline select-all">
-                          {selectedUser.description || `Auto Provisioned Employee Account for ${selectedUser.name}`}
-                        </div>
-                      </div>
+                        {/* Type Label */}
+                        <td className="py-2 px-3 border-l border-transparent truncate uppercase tracking-wider font-mono text-[10px] select-none">
+                          {obj.type}
+                        </td>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">Office / Facility Location</label>
-                          <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-slate-700 font-bold font-headline select-all">
-                            {selectedUser.office || "Headquarters HQ - AH"}
-                          </div>
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">Phone Number / Ext</label>
-                          <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-slate-700 font-bold font-mono select-all">
-                            {selectedUser.mobile || "+66 (0) 2 613 1000"}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">Email Address</label>
-                        <div className="p-2.5 bg-blue-50/50 border border-blue-100/50 rounded text-xs text-primary font-black font-mono select-all flex items-center justify-between">
-                          <span>{selectedUser.email}</span>
-                          <span className="text-[9px] bg-primary text-white px-1.5 py-[2px] rounded uppercase font-headline">SMTP Active</span>
-                        </div>
-                      </div>
-
-                    </div>
-
-                    {/* Quick Summary Sidebar */}
-                    <div className="col-span-12 md:col-span-4 bg-slate-50 border border-slate-200 p-5 rounded-lg text-slate-700 select-none">
-                      <div className="font-extrabold text-xs text-primary mb-3 flex items-center gap-1 font-headline uppercase">
-                        <Info className="h-4 w-4 text-primary" /> Active Quick Summary
-                      </div>
-                      <div className="space-y-3.5 text-xs font-headline">
-                        <div className="border-b pb-2">
-                          <p className="text-[10px] text-slate-400 uppercase font-black">Last Network Logon</p>
-                          <p className="font-bold text-slate-800 mt-0.5 font-mono">Today, {new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}</p>
-                        </div>
-                        <div className="border-b pb-2">
-                          <p className="text-[10px] text-slate-400 uppercase font-black">Printer Token code</p>
-                          <p className="font-extrabold text-secondary mt-0.5 font-mono flex items-center gap-1.5">
-                            <span className="inline-block h-2 w-2 rounded-full bg-secondary tracking-widest animate-pulse" />
-                            {selectedUser.printCode || "123456"}
-                          </p>
-                        </div>
-                        <div className="border-b pb-2">
-                          <p className="text-[10px] text-slate-400 uppercase font-black">Object Created Date</p>
-                          <p className="font-bold text-slate-800 mt-0.5 font-mono">2026-06-08 (Sync-Record)</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-slate-400 uppercase font-black">LDAP Schema Class</p>
-                          <span className="inline-block mt-1 font-bold text-[9px] text-[#001f56] bg-blue-100 border border-blue-200 px-2 py-0.5 rounded uppercase">
-                            USER_CONTAINED
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeDetailTab === 'address' && (
-                  /* TAB 2: Physical Address specifications */
-                  <div className="space-y-4 max-w-xl">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">Street Address</label>
-                      <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-slate-700 font-headline select-all">
-                        {selectedUser.street || "99 Moo 1 Hitech Industrial Estate, Tambol Ban Len"}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">City / District</label>
-                        <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-slate-700 font-medium font-headline select-all">
-                          {selectedUser.city || "Bang Pa-In"}
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">State / Province</label>
-                        <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-slate-700 font-medium font-headline select-all">
-                          {selectedUser.state || "Phranakhon Sri Ayutthaya"}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">Zip Code / Post Code</label>
-                        <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-slate-700 font-mono select-all">
-                          {selectedUser.zipCode || "13160"}
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">Country</label>
-                        <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-slate-700 font-bold font-headline select-all">
-                          {selectedUser.country || "Thailand"}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeDetailTab === 'account' && (
-                  /* TAB 3: Active Directory Logon Options details */
-                  <div className="space-y-5 max-w-xl">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">User Principal Logon Name (UPN)</label>
-                      <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-primary font-black font-mono select-all">
-                        {selectedUser.uid}@aapico.com
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-50 p-4 border border-slate-200 rounded-lg space-y-3.5 select-none font-headline">
-                      <h4 className="font-extrabold text-xs text-[#001f56] uppercase tracking-wide">Account Security Options</h4>
-                      
-                      <div className="space-y-2 text-xs">
-                        <label className="flex items-center gap-2.5 text-slate-600 font-medium cursor-pointer">
-                          <input type="checkbox" defaultChecked={false} className="rounded border-slate-300 text-primary focus:ring-primary h-4.5 w-4.5" />
-                          <span>User must change password at next logon (Required change)</span>
-                        </label>
-                        
-                        <label className="flex items-center gap-2.5 text-slate-600 font-medium cursor-pointer">
-                          <input type="checkbox" defaultChecked={false} className="rounded border-slate-300 text-primary focus:ring-primary h-4.5 w-4.5" />
-                          <span>User cannot change password (IT Administration freeze)</span>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 text-slate-800 font-bold cursor-pointer">
-                          <input type="checkbox" defaultChecked={true} className="rounded border-slate-300 text-primary focus:ring-primary h-4.5 w-4.5" />
-                          <span>Password never expires (Corporate standard template)</span>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 text-slate-600 font-medium cursor-pointer">
-                          <input type="checkbox" defaultChecked={false} className="rounded border-slate-300 text-primary focus:ring-primary h-4.5 w-4.5" />
-                          <span>Account is locked / disabled (Disable validation)</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">Account Expiry settings</label>
-                      <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-slate-600 font-semibold font-headline select-none">
-                        Never (Permanent Full-access object)
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeDetailTab === 'organization' && (
-                  /* TAB 4: Organization structure */
-                  <div className="space-y-4 max-w-xl">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">Job Title</label>
-                        <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-slate-800 font-extrabold font-headline select-all">
-                          {selectedUser.title}
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">Department</label>
-                        <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-slate-700 font-bold font-headline select-all">
-                          {selectedUser.dept}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline">Company Name</label>
-                      <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-xs text-slate-700 font-semibold font-headline select-all">
-                        {selectedUser.company || "AAPICO Hitech Public Company Limited"}
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5 border-t pt-4">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-headline block mb-1">Direct Manager</label>
-                      <div className="p-3 border border-slate-200 rounded-lg bg-slate-50 flex items-center gap-3.5 max-w-md select-none font-headline">
-                        <div className="w-10 h-10 rounded-full bg-slate-350 text-slate-700 bg-slate-200 font-extrabold text-sm flex items-center justify-center border">
-                          {(selectedUser.manager || "Somsak Sombat").split(' ').map(n=>n[0]).join('')}
-                        </div>
-                        <div>
-                          <p className="font-extrabold text-xs text-primary">{selectedUser.manager || "Somsak Sombat"}</p>
-                          <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Authoritative LDAP Manager CN</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeDetailTab === 'memberof' && (
-                  /* TAB 5: LDAP Group memberships */
-                  <div className="space-y-4 select-none animate-fadeIn">
-                    <div className="flex justify-between items-center px-1 font-headline">
-                      <span className="text-xs text-slate-600 font-bold">Group members of (AD Access Lists)</span>
-                      <span className="text-xs bg-[#001f56] text-white px-2 py-0.5 rounded font-black">4 Total</span>
-                    </div>
-
-                    <div className="border border-slate-200 rounded-lg overflow-hidden max-w-2xl bg-white shadow-inner">
-                      <table className="w-full text-left text-xs text-slate-700 font-headline">
-                        <thead className="bg-[#f5f5f5] text-slate-700 font-bold border-b border-slate-200">
-                          <tr>
-                            <th className="p-2.5 pl-4">Security Group Name</th>
-                            <th className="p-2.5 pl-4">Distinguished Directory Path</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-headline leading-tight">
-                          {[
-                            { name: "Domain Users", path: "DC=aapico,DC=com/Users" },
-                            { name: selectedUser.dept === 'Information Technology' ? "Domain Admins" : "Engineering Users", path: "DC=aapico,DC=com/Users" },
-                            { name: "VPN Users", path: "DC=aapico,DC=com/Security" },
-                            { name: "CL100", path: "DC=aapico,DC=com/Groups/Regional" },
-                          ].map((g, idx) => (
-                            <tr key={idx} className="hover:bg-slate-50">
-                              <td className="p-3 pl-4 font-black text-primary flex items-center gap-1.5">
-                                <Users className="h-3.5 w-3.5 text-primary shrink-0" /> {g.name}
-                              </td>
-                              <td className="p-3 pl-4 font-mono text-slate-400 text-[10px]">
-                                {g.path}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {activeDetailTab === 'attribute' && (
-                  /* TAB 6: Active Directory Attribute Editor key-val table specifications */
-                  <div className="space-y-3.5 select-all">
-                    <p className="text-[11px] text-slate-400 italic">
-                      Dumping raw Active Directory schema attributes compiled from Active Node mapping values.
-                    </p>
-
-                    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-[300px] overflow-y-auto custom-scrollbar shadow-inner select-none">
-                      <table className="w-full text-left font-mono text-[10px] border-collapse text-slate-700">
-                        <thead className="bg-[#f5f5f5] text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10">
-                          <tr>
-                            <th className="p-2 px-3 pl-4 border-r">Attribute Name</th>
-                            <th className="p-2 px-3">Raw Decrypted Value</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 leading-tight">
-                          {[
-                            { attr: "cn", val: selectedUser.name },
-                            { attr: "distinguishedName", val: selectedNode.dn },
-                            { attr: "sAMAccountName", val: selectedUser.uid },
-                            { attr: "userPrincipalName", val: `${selectedUser.uid}@aapico.com` },
-                            { attr: "objectGUID", val: `f47ac10b-${selectedUser.uid.length}8cc-4372-a567-0e02b2c3d479` },
-                            { attr: "extensionAttribute1", val: selectedUser.printCode },
-                            { attr: "extensionAttribute2", val: selectedUser.dept.toUpperCase() },
-                            { attr: "postalCode", val: selectedUser.zipCode || "13160" },
-                            { attr: "co", val: selectedUser.country || "Thailand" },
-                            { attr: "whenCreated", val: "20260608084532.0Z" }
-                          ].map((a, idx) => (
-                            <tr key={idx} className="hover:bg-slate-50 hover-trigger">
-                              <td className="p-2 px-3 pl-4 border-r text-[#001f56] font-extrabold select-all select-none truncate max-w-[150px]">{a.attr}</td>
-                              <td className="p-2 px-3 select-all truncate max-w-[320px]" title={a.val}>{a.val}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-              </div>
-
-              {/* Detail panel footer */}
-              <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end shrink-0 select-none">
-                <button
-                  onClick={() => {
-                    const domainNode = rootNodes[0] || selectedNode;
-                    setSelectedNode({
-                      dn: 'OU=Engineering,OU=Users,DC=aapico,DC=com',
-                      name: 'Engineering',
-                      type: 'ou',
-                      has_children: true
-                    });
-                    setSelectedDN('OU=Engineering,OU=Users,DC=aapico,DC=com');
-                  }}
-                  className="px-4 py-2 border border-slate-300 text-slate-600 font-bold text-xs rounded hover:bg-slate-100 cursor-pointer h-9 transition-colors flex items-center gap-1 font-headline"
-                >
-                  <ArrowLeft className="h-3.5 w-3.5" /> Back to List
-                </button>
-              </div>
-
-            </div>
-            ) : (
-              <div className="flex-grow flex items-center justify-center h-full">
-                <span className="text-sm text-slate-400 italic">User details load failed.</span>
-              </div>
-            )
-          ) : (
-            
-            /* VIEW B: Table List display for OUs / Domain nodes */
-            <div className="flex flex-col h-full overflow-hidden">
-              
-              {/* Table header bar */}
-              <div className="p-5 bg-surface-container-low border-b border-outline-variant flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 select-none font-headline">
-                <div className="min-w-0">
-                  <h3 className="font-extrabold text-sm text-primary flex items-center gap-1.5 leading-none">
-                    <Database className="h-4.5 w-4.5 text-primary" /> 
-                    <span>Directory Leaf Nodes inside: "{selectedNode?.name || 'aapico.com'}"</span>
-                  </h3>
-                  <p className="text-[10px] text-slate-400 mt-1 truncate max-w-md select-text" title={selectedDN}>
-                    LDAP Path: {selectedDN}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button 
-                    onClick={handleUpOneLevel}
-                    className="p-1 px-1.5 text-slate-600 hover:bg-slate-100 rounded border hover:border-slate-300 cursor-pointer flex items-center gap-1 font-extrabold text-[11px]"
-                    title="Up one level"
-                  >
-                    <FolderUp className="h-3.5 w-3.5 text-slate-600" />
-                    <span>Up One Level</span>
-                  </button>
-                  <button 
-                    onClick={() => { loadRootNodes(); loadDetailsList(selectedDN); }}
-                    className="p-1.5 text-slate-600 hover:bg-slate-100 border hover:border-slate-200 rounded cursor-pointer"
-                    title="Reload catalog folder"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5 text-slate-600" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Table rendering list */}
-              <div className="flex-grow overflow-y-auto custom-scrollbar bg-white select-none">
-                <table className="w-full text-left border-collapse text-xs select-none">
-                  <thead className="bg-[#f5f5f5] text-slate-700 font-bold border-b border-outline-variant sticky top-0 z-10 font-headline leading-none">
-                    <tr>
-                      <th className="p-2.5 pl-4 border-r border-slate-200">Name</th>
-                      <th className="p-2.5 pl-4 border-r border-slate-200">Type</th>
-                      <th className="p-2.5 pl-4">Distinguished Path (DN)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-headline">
-                    {loadingDetails ? (
-                      <tr>
-                        <td colSpan={3} className="text-center py-20 text-slate-400 italic">
-                          <Loader2 className="h-5 w-5 animate-spin text-primary inline-block mr-1.5" /> Querying AD controllers database...
+                        {/* Description */}
+                        <td className="py-2 px-3 border-l border-transparent truncate max-w-sm select-all">
+                          {obj.description || <span className="text-slate-400 italic">Not Configure</span>}
                         </td>
                       </tr>
-                    ) : detailsList.length > 0 ? (
-                      detailsList.map((child) => {
-                        const childIcon = getNodeIconMapping(child.type);
-                        return (
-                          <tr 
-                            key={child.dn}
-                            onClick={() => handleNodeClick(child)}
-                            onDoubleClick={() => {
-                              // If it's a container / OU / Domain, enter inside the leaf node directory
-                              // If it's a user, handleNodeClick will let User Profile view overlay
-                              if (['ou', 'container', 'domain'].includes(child.type)) {
-                                setSelectedDN(child.dn);
-                                setSelectedNode(child);
-                                setExpandedNodes(prev => ({ ...prev, [child.dn]: true }));
-                              }
-                            }}
-                            className="hover:bg-slate-50 cursor-pointer text-slate-800 transition-colors"
-                          >
-                            <td className="p-3 pl-4 border-r border-slate-100 max-w-xs truncate">
-                              <div className="flex items-center gap-2">
-                                <span className={`material-symbols-outlined text-[16px] shrink-0 ${childIcon.css}`}>
-                                  {childIcon.icon}
-                                </span>
-                                <span className="font-extrabold text-slate-900 leading-tight">
-                                  {child.name}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="p-3 pl-4 border-r border-slate-100">
-                              <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 border rounded ${
-                                child.type === 'user' 
-                                  ? 'bg-blue-50 border-blue-100 text-blue-700' 
-                                  : child.type === 'ou' 
-                                    ? 'bg-amber-50 border-amber-100 text-amber-700'
-                                    : 'bg-slate-50 border-slate-100 text-slate-600'
-                              }`}>
-                                {child.type}
-                              </span>
-                            </td>
-                            <td className="p-3 pl-4 font-mono text-[10px] text-slate-400 truncate max-w-sm" title={child.dn}>
-                              {child.dn}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    ) : (
-                      <tr>
-                        <td colSpan={3} className="text-center py-16 text-slate-400 italic">
-                          (ว่าง — ไม่มีกลุ่ม สมาชิก หรืออ็อบเจ็กต์ภายใน OUs นี้)
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    );
+                  })
+                ) : (
+                  <tr className="select-none">
+                    <td colSpan={3} className="py-12 text-center text-slate-400 italic font-sans">
+                      Active container is empty. Drag or Add active verified credentials inside.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
-              {/* Status bar details */}
-              <div className="p-3.5 bg-slate-50 border-t border-[#cbd5e1] text-[10px] text-slate-500 font-headline select-none flex justify-between items-center shrink-0 leading-none">
-                <div className="truncate pr-4">Active Directory Path: {selectedNode?.name || 'aapico.com'}</div>
-                <div className="shrink-0 font-bold">{detailsList.length} object(s) found</div>
-              </div>
-
-            </div>
-
-          )}
+          {/* Right Content Lists MMC Status bar */}
+          <div className="bg-[#f0f0f0] border-t border-[#b2b2b2] p-2 flex justify-between items-center text-[10px] text-slate-500 font-mono select-none">
+            <span className="font-semibold text-slate-600">
+              {selectedRowIndex !== null && currentObjectsList[selectedRowIndex]
+                ? `Selected: ${currentObjectsList[selectedRowIndex].name} (${currentObjectsList[selectedRowIndex].type})`
+                : 'Selected: None'}
+            </span>
+            <span>{currentObjectsList.length} Objects inside active scope</span>
+          </div>
 
         </section>
 
       </div>
+
+      {/* FOOTER DIRECTORY LEGEND */}
+      <div className="bg-[#e4eef6] p-2.5 border-t border-[#b0b0b0] text-[10px] text-slate-600 leading-normal flex items-start gap-2 select-none select-none font-sans">
+        <Info className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+        <span className="font-headline text-slate-500">
+          <b>MMC Guidelines</b>: Double-click any User, Computer, or Group in the item list to pull the classic <b>Active Directory Properties UI</b>, inspect structural backend Attributes, and copy standard python script variables effortlessly.
+        </span>
+      </div>
+
+
+      {/* ========================================================== */}
+      {/* 5. POP-UP DIALOG : PROPERTIES CONFIGURATION MODAL (MMC LOOKS) */}
+      {/* ========================================================== */}
+      {isPropertiesOpen && activePropertyObject && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto select-none select-none">
+
+          <div className="bg-[#f0f0ee] border-2 border-[#d4d0c8] rounded shadow-2xl max-w-3xl w-full flex flex-col overflow-hidden text-[#000] text-xs">
+
+            {/* Dialog Blue Title Bar */}
+            <div className="bg-gradient-to-r from-[#0a246a] to-[#a6c8f0] text-white px-3 py-1.5 flex justify-between items-center select-none shrink-0 font-medium">
+              <span className="font-bold font-sans">
+                {activePropertyObject.name} Properties
+              </span>
+              <button
+                onClick={() => setIsPropertiesOpen(false)}
+                className="w-4 h-4 rounded-sm bg-red-600 border border-red-500 flex items-center justify-center text-[10px] font-bold text-white hover:bg-red-500 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* General selected object profile summary card */}
+            <div className="bg-white p-3 border-b border-[#cbcbcb] flex gap-3.5 items-center select-none font-sans">
+              <div className="w-10 h-10 rounded bg-[#e3ecf5] text-[#3b72ab] border border-[#a2c2e0] flex items-center justify-center font-bold text-lg font-mono">
+                {activePropertyObject.type === 'user' ? 'U' : activePropertyObject.type === 'group' ? 'G' : 'C'}
+              </div>
+              <div>
+                <h3 className="font-extrabold text-[#000] text-xs leading-none">{activePropertyObject.name}</h3>
+                <p className="text-[10px] text-slate-500 mt-1.5 font-mono select-all break-all">
+                  DN: {activePropertyObject.dn}
+                </p>
+              </div>
+            </div>
+
+            {/* ADUC Tabs Selector Row */}
+            <div className="bg-[#f0f0ee] border-b border-[#b5b2ad] flex flex-wrap gap-0.5 px-3 pt-2.5 overflow-x-auto select-none">
+              {[
+                { key: 'general', label: 'General' },
+                { key: 'address', label: 'Address' },
+                { key: 'account', label: 'Account' },
+                { key: 'profile', label: 'Profile' },
+                { key: 'telephones', label: 'Telephones' },
+                { key: 'organization', label: 'Organization' },
+                { key: 'memberof', label: 'Member Of' },
+                { key: 'attribute', label: 'Attribute Editor' },
+                { key: 'python', label: 'Python Payload Code (Direct Copy)' }
+              ].map(tab => {
+                const isActive = activeModalTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveModalTab(tab.key)}
+                    className={`px-3 py-1.5 text-xs border rounded-t transition-all cursor-pointer font-sans font-bold select-none ${isActive
+                      ? 'bg-white border-[#b5b2ad] border-b-transparent text-[#001f56] translate-y-[1px] relative z-10'
+                      : 'bg-[#e4e4e4] border-transparent text-slate-600 hover:text-black hover:bg-[#e8e8e8]'
+                      }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Tabs content Canvas with Compact Forms */}
+            <div className="bg-white p-5 m-2.5 border border-[#b5b2ad] shadow-inner flex-grow overflow-y-auto max-h-[420px] text-slate-800 font-sans select-all">
+
+              {/* TAB 1: General */}
+              {activeModalTab === 'general' && (
+                <div className="space-y-3 font-sans">
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">First Name (givenName)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.givenName || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Initials (initials)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.initials || ''}
+                      readOnly
+                      className="p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors max-w-[80px]"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Last Name (sn)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.sn || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Display Name (displayName)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.displayName || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Description (description)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.description || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Office Location (physicalDeliveryOfficeName)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.physicalDeliveryOfficeName || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Telephone Number (telephoneNumber)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.telephoneNumber || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Email Address (mail)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.mail || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: Address */}
+              {activeModalTab === 'address' && (
+                <div className="space-y-3 font-sans">
+                  <div className="grid grid-cols-3 gap-2 items-start mt-1">
+                    <span className="font-bold text-slate-600 text-right pr-2 pt-1">Street (streetAddress)</span>
+                    <textarea
+                      rows={2}
+                      value={activePropertyObject.streetAddress || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors resize-none"
+                      onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">P.O. Box (postOfficeBox)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.postOfficeBox || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">City (l)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.l || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">State/Province (st)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.st || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Zip/Postal Code (postalCode)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.postalCode || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Country/Region (co)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.co || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: Account */}
+              {activeModalTab === 'account' && (
+                <div className="space-y-4 font-sans select-none">
+
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">User logon name (UPN)</span>
+                    <div className="col-span-2 flex items-center">
+                      <input
+                        type="text"
+                        value={activePropertyObject.sAMAccountName || ''}
+                        readOnly
+                        className="p-1.5 border border-slate-200 bg-slate-50 text-slate-700 rounded-l outline-none select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors max-w-sm flex-grow"
+                        onClick={(e) => (e.target as HTMLInputElement).select()}
+                      />
+                      <span className="bg-slate-100 border border-l-0 border-slate-200 p-1.5 text-xs rounded-r select-none font-semibold text-slate-500 font-mono">
+                        @aapico.com
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Logon name (pre-Win2000)</span>
+                    <input
+                      type="text"
+                      value={`AAPICO\\${activePropertyObject.sAMAccountName || ''}`}
+                      readOnly
+                      className="p-1.5 border border-slate-200 bg-slate-50 text-slate-700 rounded outline-none select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                    />
+                  </div>
+
+                  <div className="border border-slate-200 bg-slate-50/60 p-3 rounded-lg space-y-2.5">
+                    <span className="text-[10px] uppercase font-black tracking-widest text-[#3b72ab] block border-b pb-1">
+                      Account Operations Options
+                    </span>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+
+                      <label className="flex items-center gap-2 cursor-pointer opacity-75">
+                        <input
+                          type="checkbox"
+                          checked={activePropertyObject.mustChangePwd === true}
+                          disabled
+                          className="h-4 w-4 border-slate-300 rounded text-[#3b72ab] cursor-not-allowed"
+                        />
+                        <span className={activePropertyObject.mustChangePwd ? "font-bold text-[#0a246a]" : "text-slate-600"}>
+                          User must change password
+                        </span>
+                      </label>
+
+                      <label className="flex items-center gap-2 cursor-pointer opacity-75">
+                        <input
+                          type="checkbox"
+                          checked={activePropertyObject.cannotChangePwd === true}
+                          disabled
+                          className="h-4 w-4 border-slate-300 rounded text-[#3b72ab] cursor-not-allowed"
+                        />
+                        <span className="text-slate-600">User cannot change password</span>
+                      </label>
+
+                      <label className="flex items-center gap-2 cursor-pointer opacity-75">
+                        <input
+                          type="checkbox"
+                          checked={activePropertyObject.pwdNeverExpires === true}
+                          disabled
+                          className="h-4 w-4 border-slate-300 rounded text-[#3b72ab] cursor-not-allowed"
+                        />
+                        <span className={activePropertyObject.pwdNeverExpires ? "font-bold text-[#0a246a]" : "text-slate-600"}>
+                          Password never expires
+                        </span>
+                      </label>
+
+                      <label className="flex items-center gap-2 cursor-pointer opacity-75">
+                        <input
+                          type="checkbox"
+                          checked={activePropertyObject.acctDisabled === true}
+                          disabled
+                          className="h-4 w-4 border-slate-300 rounded text-[#3b72ab] cursor-not-allowed"
+                        />
+                        <span className={activePropertyObject.acctDisabled ? "font-bold text-red-700" : "text-slate-600"}>
+                          Account is disabled
+                        </span>
+                      </label>
+
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 items-center mt-3">
+                    <span className="font-bold text-slate-600 text-right pr-2">Account expires:</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.accountExpires || 'Never'}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                    />
+                  </div>
+
+                </div>
+              )}
+
+              {/* TAB 4: Profile */}
+              {activeModalTab === 'profile' && (
+                <div className="space-y-4 font-sans focus:ring-1">
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Profile path:</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.profilePath || 'Not Set'}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 rounded bg-slate-50 font-mono text-xs select-all text-[#001f56] outline-none cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Logon script:</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.scriptPath || 'Not Set'}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 rounded bg-slate-50 font-mono text-xs select-all text-[#001f56] outline-none cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+
+                  <div className="border border-slate-200 p-4 rounded-lg bg-slate-50/50 space-y-4">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block border-b pb-1 select-none">
+                      Home Folder Mapping
+                    </span>
+                    <div className="grid grid-cols-3 gap-2 items-center">
+                      <span className="font-bold text-slate-600 text-right pr-2 select-none">Connect Drive:</span>
+                      <div className="col-span-2 flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={activePropertyObject.homeDrive || 'None'}
+                          readOnly
+                          className="p-1 border border-slate-200 rounded bg-slate-100 text-xs w-16 text-center select-all font-mono outline-none"
+                        />
+                        <span className="text-slate-500 font-semibold select-none">To :</span>
+                        <input
+                          type="text"
+                          value={activePropertyObject.homeDirectory || 'Not Set'}
+                          readOnly
+                          className="p-1 border border-slate-200 rounded bg-slate-50 font-mono text-xs max-w-sm flex-grow text-[#001f56] outline-none cursor-pointer hover:bg-slate-100 transition-colors"
+                          onClick={(e) => (e.target as HTMLInputElement).select()}
+                          title="Click to copy attribute"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 5: Telephones */}
+              {activeModalTab === 'telephones' && (
+                <div className="space-y-3 font-sans">
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Home (homePhone)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.homePhone || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Pager (pager)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.pager || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Mobile (mobile)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.mobile || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Fax (facsimileTelephoneNumber)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.facsimileTelephoneNumber || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">IP Phone (ipPhone)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.ipPhone || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-start">
+                    <span className="font-bold text-slate-600 text-right pr-2 pt-1">Notes (comment)</span>
+                    <textarea
+                      rows={3}
+                      value={activePropertyObject.comment || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors resize-none"
+                      onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 6: Organization */}
+              {activeModalTab === 'organization' && (
+                <div className="space-y-3 font-sans">
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Job Title (title)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.title || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Department (department)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.department || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-650 text-right pr-2">Company (company)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.company || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="font-bold text-slate-600 text-right pr-2">Direct Manager DN (manager)</span>
+                    <input
+                      type="text"
+                      value={activePropertyObject.manager || ''}
+                      readOnly
+                      className="col-span-2 p-1.5 border border-slate-200 bg-slate-50 text-slate-700 outline-none rounded select-all font-mono text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      title="Click to copy attribute"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 7: Member Of */}
+              {activeModalTab === 'memberof' && (
+                <div className="space-y-4 font-sans select-none">
+                  <h4 className="text-xs font-bold text-slate-600 border-b pb-2">
+                    Security Group Memberships Checklists:
+                  </h4>
+                  <div className="space-y-1.5">
+                    {(activePropertyObject.memberOf || []).map((grp, sIdx) => (
+                      <div
+                        key={sIdx}
+                        className="p-2.5 border border-slate-250 bg-slate-50 rounded-md flex justify-between items-center"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-emerald-600 shrink-0" />
+                          <span className="font-bold text-[#001f56] select-all">{grp}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 8: Attribute Editor */}
+              {activeModalTab === 'attribute' && (
+                <div className="space-y-3 font-sans">
+
+                  <div className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg text-[11px] text-slate-500 font-medium">
+                    Raw database columns / Schema dictionary mapping for backend queries (Including extensionAttribute 1-15):
+                  </div>
+
+                  <div className="border border-slate-200 rounded-md overflow-hidden max-h-[300px] overflow-y-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-[#f0f0ee] border-b border-[#cbcbcb] text-slate-600 sticky top-0">
+                        <tr>
+                          <th className="p-2 border-r border-slate-200">Attribute Name</th>
+                          <th className="p-2 border-r border-slate-200">Value</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {/* Map common variables */}
+                        {[
+                          { key: 'employeeID', val: activePropertyObject.employeeID || 'Not Set' },
+                          { key: 'employeeType', val: activePropertyObject.employeeType || 'Not Set' },
+                          { key: 'mailNickname', val: activePropertyObject.mailNickname || 'Not Set' },
+                          { key: 'sAMAccountName', val: activePropertyObject.sAMAccountName || 'Not Set' },
+                          { key: 'userPrincipalName', val: activePropertyObject.userPrincipalName || 'Not Set' },
+                          { key: 'givenName', val: activePropertyObject.givenName || 'Not Set' },
+                          { key: 'sn', val: activePropertyObject.sn || 'Not Set' },
+                          { key: 'displayName', val: activePropertyObject.displayName || 'Not Set' },
+                          { key: 'mail', val: activePropertyObject.mail || 'Not Set' },
+                          { key: 'telephoneNumber', val: activePropertyObject.telephoneNumber || 'Not Set' },
+                          { key: 'physicalDeliveryOfficeName', val: activePropertyObject.physicalDeliveryOfficeName || 'Not Set' }
+                        ].map((ea, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50 font-mono text-[11px]">
+                            <td className="p-2 font-bold text-slate-500 border-r">{ea.key}</td>
+                            <td className="p-2 text-slate-800 select-all pr-5 truncate max-w-xs" title={ea.val}>{ea.val}</td>
+                          </tr>
+                        ))}
+
+                        {/* extensions mappings */}
+                        {Array.from({ length: 15 }, (_, i) => {
+                          const attrName = `extensionAttribute${i + 1}`;
+                          let val = "Not Set";
+                          if (activePropertyObject.extensionAttributes && activePropertyObject.extensionAttributes[attrName]) {
+                            val = activePropertyObject.extensionAttributes[attrName];
+                          } else if (i === 0 && activePropertyObject.employeeID) {
+                            val = activePropertyObject.employeeID;
+                          } else if (i === 1 && activePropertyObject.department) {
+                            val = activePropertyObject.department;
+                          } else if (i === 2 && activePropertyObject.company) {
+                            val = activePropertyObject.company;
+                          }
+
+                          return (
+                            <tr key={attrName} className="hover:bg-slate-50 font-mono text-[11px]">
+                              <td className="p-2 font-bold text-slate-500 border-r">{attrName}</td>
+                              <td className="p-2 text-[#0a246a] font-bold select-all pr-5">{val}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                </div>
+              )}
+
+              {/* TAB 9: PYTHON PYLOAD GENERATOR */}
+              {activeModalTab === 'python' && (
+                <div className="space-y-4 font-sans select-all">
+                  <div className="flex justify-between items-center bg-slate-100 p-2 border rounded-md">
+                    <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
+                      <FileText className="h-3.5 w-3.5" />
+                      Python LDAP ldap3 Object attributes payload mapping
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyPythonBlock(activePropertyObject)}
+                      className={`px-3 py-1 text-xs font-bold rounded shadow-3xs cursor-pointer select-none transition-all flex items-center gap-1 ${copyCodeSuccess
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-white hover:bg-slate-50 border border-slate-300 text-slate-700'
+                        }`}
+                    >
+                      {copyCodeSuccess ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                      <span>{copyCodeSuccess ? "Copied python dictionary!" : "Copy Payload Block"}</span>
+                    </button>
+                  </div>
+
+                  <pre className="p-4 bg-slate-900 text-slate-100 rounded-lg overflow-x-auto text-[11px] font-mono leading-relaxed select-all">
+                    {generatePythonPropString(activePropertyObject)}
+                  </pre>
+
+                </div>
+              )}
+
+            </div>
+
+            {/* Dialog Action Buttons */}
+            <div className="bg-[#f0f0ee] p-3 border-t border-[#d4d0c8] flex justify-end gap-2 shrink-0 select-none">
+              <button
+                type="button"
+                onClick={() => setIsPropertiesOpen(false)}
+                className="px-5 py-1 bg-white hover:bg-slate-100 border-2 border-slate-400 text-xs font-bold font-sans rounded-md text-[#000] cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

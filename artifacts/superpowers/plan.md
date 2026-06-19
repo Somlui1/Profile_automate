@@ -1,25 +1,30 @@
 ## Goal
-Implement the Hybrid Approach to ensure accurate UI status reflection when exceptions occur during job execution. The UI and backend logs must correctly mark any active "running" sub-step as "failed" when a job crashes or is cancelled.
+Fix duplicate code in `ADExplorerTab.tsx` and implement a backend API for the new MMC-style ADUC interface to allow real, direct user creation in Active Directory.
 
 ## Assumptions
-- The database schema for `add_log` allows passing `metadata` arguments.
-- In `sync_user.py`, `get_job_logs(job_id)` or a similar function can be used to retrieve the current logs for the job to determine the last active sub-step.
-- The UI mapping logic in `JobQueueTab.tsx` evaluates sub-step states sequentially based on the cache.
+- The frontend uses `fetch` to communicate with the `/api/v1/user` backend routes.
+- The `ad_service` module can handle synchronous user creation via `ad_service.create_user`.
+- The new `ADExplorerTab` component added by the user (lines 1583-3165) is the correct version to keep, and the old one (lines 1-1582) should be removed.
 
 ## Plan
-### Step 1: Update Frontend Override Logic
-- **Files**: `frontend/src/components/JobQueueTab.tsx`
-- **Change**: After `stepLogs.forEach` calculates the `subStates`, add a check: if the overall job `status === 'failed'` or `'cancelled'`, iterate over `subStates` and change any state that is `'RUNNING'` to `'FAILED'`. 
-- **Verify**: Inspect `JobQueueTab.tsx` to ensure the override logic exists before rendering the `sub_steps.map`.
+### Step 1: Remove Duplicate Component Code
+- **Files**: `frontend/src/components/ADExplorerTab.tsx`
+- **Change**: Delete the old component implementation (lines 1 to 1582) so that only the new `ADExplorerTab` component and its interfaces remain.
+- **Verify**: Run `npx tsc --noEmit` inside `frontend/` to ensure there are no duplicate export errors.
 
-### Step 2: Implement Backend Log Accuracy
-- **Files**: `worker/tasks/sync_user.py`
-- **Change**: In the `_run_step` exception handler, query the database or just use the last log state if tracked, to find the last `sub_step` that was marked `running`. Then inject `metadata={"sub_step": last_sub_step, "sub_step_status": "failed"}` into the `add_log` call for the failure message. 
-- **Verify**: Check that `add_log` in the `except` block now receives the correct metadata dictionary identifying the failed sub-step.
+### Step 2: Implement Backend API Endpoint
+- **Files**: `api/endpoints/user.py`
+- **Change**: Add a new Pydantic schema `ADCreateUserDirectSchema` matching the frontend's `newUserForm` fields (firstName, lastName, logonName, description, dept, title, password, employeeId, ou). Add a new `POST /ad/create-direct` route that calls `ad_service.create_user` with these mapped details.
+- **Verify**: Run `python -m py_compile api/endpoints/user.py`.
+
+### Step 3: Wire Frontend to API
+- **Files**: `frontend/src/components/ADExplorerTab.tsx`
+- **Change**: Modify `handleCreateUserSubmit` to make a `POST` request to `/api/v1/user/ad/create-direct` using the form data. Only append the new `ADObject` to the local state (`setAdObjects`) if the API request succeeds.
+- **Verify**: Run `npx tsc --noEmit` inside `frontend/` to ensure type correctness.
 
 ## Risks & mitigations
-- **Risk**: Backend exception handler fails to query logs or determine the active sub-step, crashing the error handler itself.
-- **Mitigation**: Wrap the sub-step discovery logic in a `try...except` block so that if it fails, it defaults to the original generic failure log without metadata.
+- **Risk**: Active Directory fails to create the user due to password complexity rules or duplicate accounts.
+- **Mitigation**: The frontend will catch the non-200 response and display an error toast instead of falsely updating the UI state.
 
 ## Rollback plan
-- Revert the changes in `JobQueueTab.tsx` and `sync_user.py` to their previous states using Git or undoing the exact chunk modifications.
+- Revert `ADExplorerTab.tsx` and `api/endpoints/user.py` via Git to undo the endpoint integration and restore the duplicate code block if needed.

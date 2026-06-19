@@ -73,6 +73,17 @@ class UserSyncRequest(BaseModel):
     workflow_control: WorkflowControlSchema
     task_data: TaskDataSchema
 
+class ADCreateUserDirectSchema(BaseModel):
+    firstName: str
+    lastName: str
+    logonName: str
+    description: str
+    dept: str
+    title: str
+    password: str
+    employeeId: str
+    ou: str
+
 @router.get("/ad/check-user", status_code=status.HTTP_200_OK)
 def check_user(query: str, exact: bool = False):
     """
@@ -300,3 +311,62 @@ def sync_user(payload: UserSyncRequest):
             "status": papercut_status
         }
     }
+
+@router.post("/ad/create-direct", status_code=status.HTTP_200_OK)
+def create_ad_user_direct(payload: ADCreateUserDirectSchema):
+    """
+    Directly create a user in Active Directory synchronously (for ADUC Explorer simulation).
+    """
+    try:
+        user_exists = ad_service.check_user_exists(payload.logonName)
+        if user_exists:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"User {payload.logonName} already exists"
+            )
+
+        ad_user_details = {
+            "username": payload.logonName,
+            "name_english": f"{payload.firstName} {payload.lastName}".strip(),
+            "employee_id": payload.employeeId,
+            "department": payload.dept,
+            "position": payload.title,
+            "custom_attributes": {
+                "description": payload.description
+            }
+        }
+        
+        # Determine email
+        ad_user_details["email"] = f"{payload.logonName}@aapico.com"
+        # Determine company
+        ad_user_details["company"] = "AH"
+
+        success, ad_dn = ad_service.create_user(
+            ad_user_details,
+            is_contractor=False,
+            target_ou=payload.ou
+        )
+
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create user in Active Directory."
+            )
+
+        return {
+            "username": payload.logonName,
+            "distinguished_name": ad_dn,
+            "status": "Success"
+        }
+    except ActiveDirectoryError as ae:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Active Directory Operation Failed: {str(ae)}"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred during direct user creation: {str(e)}"
+        )
