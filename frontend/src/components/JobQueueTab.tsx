@@ -27,7 +27,8 @@ import {
   HelpCircle,
   UserPlus,
   Key,
-  Mail
+  Mail,
+  Radio
 } from 'lucide-react';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -189,7 +190,7 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
       if (status === 'paused') {
         return { label: 'Paused', state: 'paused', color: 'bg-orange-500/10 border-orange-300 text-orange-600', icon: <Pause className="h-3 w-3" /> };
       }
-      return { label: 'Running', state: 'processing', color: 'border-primary bg-white text-primary ring-2 ring-primary/20 animate-pulse', icon: <Loader2 className="h-3 w-3 animate-spin text-primary" /> };
+      return { label: 'SSE Active', state: 'processing', color: 'border-primary bg-white text-primary ring-2 ring-primary/20 animate-pulse', icon: <Radio className="h-3 w-3 text-primary animate-pulse" /> };
     }
 
     if (currentIdx > targetIdx) {
@@ -239,10 +240,13 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
           <div>
             <p className="text-[10px] font-bold text-outline uppercase tracking-wider">Active Jobs</p>
             <p className="text-3xl font-black text-primary mt-1 font-headline-md">{activeJobs.length}</p>
-            <span className="text-[11px] text-primary font-bold">▲ Running now</span>
+            <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+              SSE Active
+            </span>
           </div>
           <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-            <Loader2 className="h-6 w-6 animate-spin" />
+            <Radio className="h-6 w-6 animate-pulse" />
           </div>
         </div>
 

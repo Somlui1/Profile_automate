@@ -1,49 +1,38 @@
-# Implementation Plan - SSE for Job Queue, Cancel/Pause/Delete Features, and UI Cleanup
+# Implementation Plan - Sidebar Status Indicators, SSE Active UI, and Menu Cleanup
 
 ## Goal
-Implement full support for job cancellation, pausing/resuming, and deletion in the job queue. Optimize the job queue updates by replacing client-side Polling with Server-Sent Events (SSE). Clean up the Job Queue footer by removing the "IT worker Cluster status" UI section.
+1. Show real-time connection status for AD LDAP, Papercut, and MS Graph (Microsoft 365) in the Sidebar using dynamic polling of the Backend Status API.
+2. Change the loading/spinning icon of active/running jobs in the Job Queue Tab to a custom indicator showing that the UI is connected and listening to the SSE stream.
+3. Move the AD Explorer menu item to the "Management" section of the Sidebar, and remove the "Directory Dashboard" menu item completely.
 
 ## User Review Required
-> [!IMPORTANT]
-> - Jobs can only be deleted if they are in a terminal state (`success`, `failed`, `cancelled`).
-> - A new SSE endpoint `/api/v1/jobs/stream` will query SQLite database for changes every 1 second and stream the full jobs list when any job `updated_at` changes.
+> [!NOTE]
+> The Sidebar will query `/api/v1/debug/system/status` every 8 seconds in the background to fetch actual connectivity state of AD, Papercut, and Microsoft Graph.
 
-## Assumptions
-- Browser support for `EventSource` is available.
-- Deleting a job will also delete its logs in SQLite.
+## Open Questions
+None.
 
-## Plan
+## Proposed Changes
 
-### Step 1: Add DB Function to Delete Jobs
-- **Files**: [database.py](file:///c:/Users/wajeepradit.p/git/profile_automate/api/core/database.py)
-- **Change**: Implement `delete_job(job_id: str)` to remove the job from `jobs` and its logs from `job_logs`.
-- **Verify**: Run unit tests or a quick Python script to verify job deletion.
+### [Frontend Components]
 
-### Step 2: Implement SSE stream and DELETE endpoints
-- **Files**: [jobs.py](file:///c:/Users/wajeepradit.p/git/profile_automate/api/endpoints/jobs.py)
-- **Change**:
-  - Implement `@router.get("/stream")` before the `@router.get("/{job_id}")` endpoint to stream the updated jobs list to the frontend using `EventSourceResponse`.
-  - Implement `@router.delete("/{job_id}")` which validates that the job is in a terminal state before calling `delete_job(job_id)`.
-- **Verify**: Fetch the `/api/v1/jobs/stream` route using curl/python and verify it streams output. Test the `DELETE` API.
+#### [MODIFY] [Sidebar.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/Sidebar.tsx)
+- Add `useState` and `useEffect` to fetch backend status from `/api/v1/debug/system/status` every 8 seconds.
+- Map the API response fields (`services.active_directory`, `services.papercut`, `services.microsoft_365`) to LDAP, Papercut, and new Microsoft Graph status badges.
+- Remove "Directory Dashboard" button from the main panels section.
+- Move "AD Explorer" button to the Management section under the "M365 Licenses" button.
 
-### Step 3: Connect Frontend to SSE stream and support delete
-- **Files**: [App.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/App.tsx)
-- **Change**:
-  - Replace the 4-second interval polling with an `EventSource` connection to `/api/v1/jobs/stream` to receive real-time jobs list updates.
-  - Update `handleControlJob` type to support `'delete'`. If action is `'delete'`, send a `DELETE` request instead of `PATCH`.
-- **Verify**: Make sure TypeScript compiler does not complain and the page connects successfully.
+#### [MODIFY] [JobQueueTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/JobQueueTab.tsx)
+- Import the `Radio` icon from `lucide-react`.
+- In `getStepStateStyle` for `'processing'` jobs, change the label to `'SSE Active'` and use the `<Radio>` icon with a pulse animation instead of `<Loader2 className="animate-spin">`.
+- Update the Active Jobs stat card indicator to display "SSE Active" with a pulsing green dot and a `<Radio>` pulse icon.
 
-### Step 4: Render Delete Button and Remove Worker Cluster UI
-- **Files**: [JobQueueTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/JobQueueTab.tsx)
-- **Change**:
-  - Update `JobQueueTabProps`'s `onControlJob` signature to accept `'delete'`.
-  - Render a button with the `<Trash2>` icon next to the toggle detail button for completed, failed, or cancelled jobs. Bind it to `onControlJob(job.id, 'delete')`.
-  - Remove the "IT worker Cluster status" container from the footer (and keep only the "Queue Latency" section, adjusting the grid/flex layout accordingly).
-- **Verify**: Run the app, check that the "IT worker Cluster status" is gone, and verify that the trash button functions correctly to delete completed jobs.
+## Verification Plan
 
-## Risks & mitigations
-- **Risk**: EventSource connection drops or gets blocked.
-- **Mitigation**: Implement automatic fallback to standard polling if the SSE connection fails to establish or disconnects unexpectedly.
+### Automated Tests
+None.
 
-## Rollback plan
-- Revert changes using `git checkout` on the modified files.
+### Manual Verification
+1. Open the app and verify the Sidebar shows real status labels (e.g., MOCK ACTIVE or LIVE CONNECTED) for AD LDAP, Papercut, and MS Graph instead of hardcoded labels.
+2. Click menu links in Sidebar and confirm "Directory Dashboard" is gone, and "AD Explorer" is in the Management section.
+3. Go to the Job Queue page, enqueue a job, and verify that running jobs display the pulsing `Radio` icon and "SSE Active" label instead of the spinning loader.

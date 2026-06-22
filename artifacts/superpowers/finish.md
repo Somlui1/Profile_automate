@@ -1,37 +1,30 @@
-# Final Summary - SSE & Job Queue Control Actions
+# Final Summary - Sidebar Connection Status & SSE Indicator Upgrades
 
 We have successfully implemented:
-1. **Server-Sent Events (SSE)** for the job queue list to completely eliminate polling overhead.
-2. **Pause/Resume/Cancel** fully supported end-to-end on both Frontend and Backend/Worker.
-3. **Delete Job** feature (removes job and its logs from the database) available for jobs in terminal states (`success`, `failed`, `cancelled`).
-4. **UI Cleanup** - removed the mock/unused "IT worker Cluster status" footer widget.
+1. **Real-time Status Polling in Sidebar**: `Sidebar.tsx` now polls the `/api/v1/debug/system/status` endpoint every 8 seconds to show the actual connection status of Active Directory, PaperCut API, and Microsoft Graph connection status.
+2. **SSE Active UI Upgrades in Job Queue**: Replaced the spinning loader with a pulsing `Radio` icon and "SSE Active" indicator in both the active jobs stat card and individual running steps.
+3. **Menu Reorganisation**: Removed "Directory Dashboard" and moved "AD Explorer" to the "Management" section.
 
 ## Verification Commands Run & Results
-
-- **Backend Syntax Check**: `python -m py_compile api/endpoints/jobs.py` (Passed)
-- **Frontend Type Check**: `npx tsc --noEmit` (Passed)
+- **Frontend Type Check**: `npx tsc --noEmit` inside `frontend/` (Passed successfully)
 
 ## Summary of Changes
 
-### Backend Database (`api/core/database.py`)
-- Implemented `delete_job(job_id: str)` to delete jobs and their execution logs.
+### Sidebar Component (`frontend/src/components/Sidebar.tsx`)
+- Imported `useState` and `useEffect` hooks.
+- Implemented status fetching from `/api/v1/debug/system/status` every 8 seconds.
+- Replaced mock badges with dynamic badges based on actual connectivity responses (MOCK ACTIVE, LIVE CONNECTED, DISCONNECTED).
+- Added an indicator badge for Microsoft Graph.
+- Removed "Directory Dashboard" from the menu.
+- Moved "AD Explorer" from "Main Panels" to the "Management" section.
 
-### Backend Endpoints (`api/endpoints/jobs.py`)
-- Added `@router.get("/stream")` to stream job list updates via EventSource/SSE when job records change.
-- Added `@router.delete("/{job_id}")` to handle deletion request for jobs in terminal states.
-
-### Frontend Controller (`frontend/src/App.tsx`)
-- Subscribed to SSE stream endpoint `/api/v1/jobs/stream` and updated local state (`jobs`) in real-time.
-- Updated `handleControlJob` to handle the `delete` action with a `DELETE` HTTP request to backend.
-
-### Frontend Component (`frontend/src/components/JobQueueTab.tsx`)
-- Updated `onControlJob` action types signature to support `'delete'`.
-- Rendered `<Trash2>` icon next to completed/failed/cancelled jobs to trigger the delete action.
-- Removed "IT Worker Cluster Status" footer component.
+### Job Queue Tab (`frontend/src/components/JobQueueTab.tsx`)
+- Imported `Radio` icon from `lucide-react`.
+- Updated active step status indicator to display "SSE Active" with a pulsing `Radio` icon instead of a spinning loader.
+- Updated "Active Jobs" card to show a pulsing green indicator ("SSE Active") and a `<Radio>` pulse icon.
 
 ## Manual Validation Steps
-1. Start the API server and Worker.
-2. Launch the frontend and navigate to "Job Queue Management".
-3. Check the network log to verify the `stream` EventSource connection is active.
-4. Try to pause/resume/cancel running jobs.
-5. Trash completed/failed/cancelled jobs and verify they immediately disappear from the UI and SQLite tables.
+1. Start the backend server.
+2. Open the browser and look at the sidebar indicators. They will initially show "CHECKING..." and then transition to "MOCK ACTIVE" or "LIVE CONNECTED" once the status responds.
+3. Check the sidebar menu: verify "Directory Dashboard" is gone, and "AD Explorer" is in the Management section.
+4. Open the Job Queue tab, enqueue/run a job, and verify that active jobs display the pulsing `Radio` icon and "SSE Active" text.

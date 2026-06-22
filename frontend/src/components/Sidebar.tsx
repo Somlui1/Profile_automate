@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, FileText, ListTodo, KeyRound, Settings, Menu, X, Printer, ShieldCheck, Search } from 'lucide-react';
 import { SystemConfig } from '../types';
 
@@ -16,7 +16,51 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, isOpen, setOpen, config }) => {
-  const isMock = config.mockMode === 'mock';
+  const [status, setStatus] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch('/api/v1/debug/system/status');
+        if (res.ok) {
+          const data = await res.json();
+          setStatus(data);
+        }
+      } catch (e) {
+        console.error("Error fetching system status in Sidebar:", e);
+      }
+    };
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 8000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const getServiceStatus = (serviceKey: string) => {
+    if (!status || !status.services || !status.services[serviceKey]) {
+      return {
+        label: 'CHECKING',
+        style: 'bg-slate-500/20 text-white/50 animate-pulse font-bold'
+      };
+    }
+    const service = status.services[serviceKey];
+    if (serviceKey === 'active_directory') {
+      if (service.mode === 'mock') {
+        return { label: 'MOCK ACTIVE', style: 'bg-emerald-600 text-white font-bold' };
+      }
+      if (service.connection_ok) {
+        return { label: 'LIVE CONNECTED', style: 'bg-emerald-600 text-white font-bold' };
+      }
+      return { label: 'DISCONNECTED', style: 'bg-rose-600 text-white animate-pulse font-bold' };
+    }
+    
+    if (service.mode === 'mock') {
+      return { label: 'MOCK ACTIVE', style: 'bg-emerald-600 text-white font-bold' };
+    }
+    if (service.mode === 'live') {
+      return { label: 'LIVE CONNECTED', style: 'bg-emerald-600 text-white font-bold' };
+    }
+    return { label: 'DISCONNECTED', style: 'bg-rose-600 text-white animate-pulse font-bold' };
+  };
 
   return (
     <>
@@ -50,18 +94,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, isOpen, se
           <p className="text-[10px] text-white/40 uppercase tracking-widest font-black px-4 mb-2">Main Panels</p>
 
           <button
-            onClick={() => { setTab('dashboard'); setOpen(false); }}
-            className={`nav-item flex items-center gap-3 px-4 py-3 font-semibold transition-all duration-150 w-full text-left rounded-lg cursor-pointer ${
-              currentTab === 'dashboard'
-                ? 'text-white border-l-4 border-white bg-white/15'
-                : 'text-white/70 hover:text-white hover:bg-white/10'
-            }`}
-          >
-            <LayoutDashboard className="h-4.5 w-4.5 shrink-0" />
-            <span className="font-body text-sm">Directory Dashboard</span>
-          </button>
-
-          <button
             onClick={() => { setTab('pdf-provision'); setOpen(false); }}
             className={`nav-item flex items-center gap-3 px-4 py-3 font-semibold transition-all duration-150 w-full text-left relative rounded-lg cursor-pointer ${
               currentTab === 'pdf-provision'
@@ -72,18 +104,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, isOpen, se
             <FileText className="h-4.5 w-4.5 shrink-0" />
             <span className="font-body text-sm">PDF Auto-Provision</span>
             <span className="absolute right-4 top-3.5 flex h-2 w-2 rounded-full bg-secondary animate-pulse"></span>
-          </button>
-
-          <button
-            onClick={() => { setTab('ad-explorer'); setOpen(false); }}
-            className={`nav-item flex items-center gap-3 px-4 py-3 font-semibold transition-all duration-150 w-full text-left rounded-lg cursor-pointer ${
-              currentTab === 'ad-explorer'
-                ? 'text-white border-l-4 border-white bg-white/15'
-                : 'text-white/70 hover:text-white hover:bg-white/10'
-            }`}
-          >
-            <Search className="h-4.5 w-4.5 shrink-0" />
-            <span className="font-body text-sm">AD Explorer</span>
           </button>
 
           <button
@@ -113,6 +133,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, isOpen, se
           </button>
 
           <button
+            onClick={() => { setTab('ad-explorer'); setOpen(false); }}
+            className={`nav-item flex items-center gap-3 px-4 py-3 font-semibold transition-all duration-150 w-full text-left rounded-lg cursor-pointer ${
+              currentTab === 'ad-explorer'
+                ? 'text-white border-l-4 border-white bg-white/15'
+                : 'text-white/70 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <Search className="h-4.5 w-4.5 shrink-0" />
+            <span className="font-body text-sm">AD Explorer</span>
+          </button>
+
+          <button
             onClick={() => { setTab('settings'); setOpen(false); }}
             className={`nav-item flex items-center gap-3 px-4 py-3 font-semibold transition-all duration-150 w-full text-left rounded-lg cursor-pointer ${
               currentTab === 'settings'
@@ -130,21 +162,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, isOpen, se
           <div className="flex items-center justify-between text-[11px] text-white/70">
             <span className="flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" /> AD LDAP:</span>
             <span
-              className={`px-2 py-0.5 font-bold uppercase rounded text-[9px] ${
-                isMock ? 'bg-secondary text-white' : 'bg-rose-600 text-white animate-pulse'
-              }`}
+              className={`px-2 py-0.5 rounded text-[9px] ${getServiceStatus('active_directory').style}`}
             >
-              {isMock ? 'MOCK ACTIVE' : 'RETRYING'}
+              {getServiceStatus('active_directory').label}
             </span>
           </div>
           <div className="flex items-center justify-between text-[11px] text-white/70">
             <span className="flex items-center gap-1"><Printer className="h-3.5 w-3.5" /> Papercut API:</span>
             <span
-              className={`px-2 py-0.5 font-bold uppercase rounded text-[9px] ${
-                isMock ? 'bg-secondary text-white' : 'bg-rose-600 text-white animate-pulse'
-              }`}
+              className={`px-2 py-0.5 rounded text-[9px] ${getServiceStatus('papercut').style}`}
             >
-              {isMock ? 'MOCK ACTIVE' : 'RETRYING'}
+              {getServiceStatus('papercut').label}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-white/70">
+            <span className="flex items-center gap-1"><KeyRound className="h-3.5 w-3.5" /> MS Graph:</span>
+            <span
+              className={`px-2 py-0.5 rounded text-[9px] ${getServiceStatus('microsoft_365').style}`}
+            >
+              {getServiceStatus('microsoft_365').label}
             </span>
           </div>
         </div>
