@@ -46,13 +46,34 @@ export default function App() {
     fetchLicenses();
   }, []);
 
-  // Poll for background Job Queue updates in real-time
+  // Listen for background Job Queue updates in real-time using SSE
   useEffect(() => {
     fetchJobs(); // initial immediately
-    const timer = setInterval(() => {
-      fetchJobs();
-    }, 4000);
-    return () => clearInterval(timer);
+    
+    const sse = new EventSource('/api/v1/jobs/stream');
+    
+    sse.addEventListener('jobs_list', (event: any) => {
+      try {
+        const data = JSON.parse(event.data);
+        setJobs(data.jobs || []);
+      } catch (e) {
+        console.error("Error parsing jobs list stream data:", e);
+      }
+    });
+    
+    sse.onerror = (err) => {
+      console.error("SSE connection error for jobs list, falling back to polling.", err);
+      sse.close();
+      
+      const timer = setInterval(() => {
+        fetchJobs();
+      }, 5000);
+      return () => clearInterval(timer);
+    };
+    
+    return () => {
+      sse.close();
+    };
   }, []);
 
   const fetchDirectoryUsers = async () => {
@@ -196,15 +217,23 @@ export default function App() {
   };
 
   // Control Background queue items
-  const handleControlJob = async (jobId: string, action: 'cancel' | 'pause' | 'resume') => {
+  const handleControlJob = async (jobId: string, action: 'cancel' | 'pause' | 'resume' | 'delete') => {
     try {
-      const response = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action })
-      });
+      let response;
+      if (action === 'delete') {
+        response = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}`, {
+          method: 'DELETE'
+        });
+      } else {
+        response = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action })
+        });
+      }
       if (response.ok) {
-        addToast(`ส่งคำสั่ง ${action.toUpperCase()} ไปยัง Job: ${jobId.slice(0, 8)}`, 'info');
+        const actionText = action === 'delete' ? 'ลบข้อมูล' : action.toUpperCase();
+        addToast(`ส่งคำสั่ง ${actionText} ไปยัง Job: ${jobId.slice(0, 8)}`, 'info');
         addLog("QUEUE", `ส่ง Action [${action.toUpperCase()}] สั่งแก้ไขสถานะ Queue Job ID ${jobId}`, "INFO");
         fetchJobs(); // reload lists immediately
       } else {

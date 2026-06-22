@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 
-from core.database import create_job, get_job, get_logs, update_job, list_jobs, add_log
+from core.database import create_job, get_job, get_logs, update_job, list_jobs, add_log, delete_job
 from core.redis_conn import sync_queue
 from endpoints.user import UserSyncRequest
 
@@ -60,6 +60,28 @@ def get_jobs(limit: int = 50, offset: int = 0):
     jobs = list_jobs(limit, offset)
     return {"jobs": jobs}
 
+@router.get("/stream")
+async def jobs_stream_all(request: Request):
+    """SSE Endpoint for all jobs list real-time updates"""
+    async def event_generator():
+        last_updated_map = {}
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                jobs = list_jobs(limit=50)
+                current_map = {j["id"]: j["updated_at"] for j in jobs}
+                if current_map != last_updated_map:
+                    yield {
+                        "event": "jobs_list",
+                        "data": json.dumps({"jobs": jobs})
+                    }
+                    last_updated_map = current_map
+            except Exception as e:
+                logger.error(f"Error in jobs stream: {e}")
+            await asyncio.sleep(1)
+    return EventSourceResponse(event_generator())
+
 @router.get("/{job_id}")
 def get_job_status(job_id: str):
     job = get_job(job_id)
@@ -104,6 +126,18 @@ def update_job_action(job_id: str, payload: JobActionRequest):
         
     else:
         raise HTTPException(status_code=400, detail="Invalid action")
+
+@router.delete("/{job_id}")
+def delete_job_route(job_id: str):
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    if job["status"] not in ["success", "failed", "cancelled"]:
+        raise HTTPException(status_code=400, detail="Cannot delete an active or queued job")
+        
+    delete_job(job_id)
+    return {"status": "deleted"}
 
 @router.get("/{job_id}/stream")
 async def job_stream(request: Request, job_id: str):

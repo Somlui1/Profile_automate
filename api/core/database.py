@@ -178,3 +178,12 @@ def cleanup_old_jobs(days: int = 30):
     cursor.execute('DELETE FROM jobs WHERE created_at < ?', (cutoff,))
     conn.commit()
     conn.close()
+
+def delete_job(job_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM job_logs WHERE job_id = ?', (job_id,))
+    cursor.execute('DELETE FROM jobs WHERE id = ?', (job_id,))
+    conn.commit()
+    conn.close()
+

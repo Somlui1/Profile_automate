@@ -48,7 +48,7 @@ const DynamicIcon = ({ name, className }: { name: string; className?: string }) 
 
 interface JobQueueTabProps {
   jobs: Job[];
-  onControlJob: (id: string, action: 'cancel' | 'pause' | 'resume') => void;
+  onControlJob: (id: string, action: 'cancel' | 'pause' | 'resume' | 'delete') => void;
   addToast: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
@@ -435,6 +435,15 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
                             <X className="h-4.5 w-4.5 text-error" />
                           </button>
                         )}
+                        {(status === 'success' || status === 'failed' || status === 'cancelled') && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onControlJob(job.id, 'delete'); }}
+                            className="p-1 px-1.5 text-error hover:bg-rose-50 rounded cursor-pointer"
+                            title="Delete Job"
+                          >
+                            <Trash2 className="h-4.5 w-4.5 text-error" />
+                          </button>
+                        )}
 
                         <button className="p-1 text-slate-700 hover:bg-slate-100 rounded shrink-0">
                           {hasExpanded ? <ChevronUp className="h-4.5 w-4.5" /> : <ChevronDown className="h-4.5 w-4.5" />}
@@ -538,7 +547,7 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
       </div>
 
       {/* Latency and memory metrics footer info */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 shrink-0">
+      <div className="grid grid-cols-1 gap-4 shrink-0">
         <div className="bg-primary p-6 rounded-lg text-white flex flex-col justify-between shadow-sm relative overflow-hidden">
           <div>
             <h4 className="font-bold text-sm mb-1 uppercase tracking-wider font-headline-md">Queue Latency</h4>
@@ -552,46 +561,6 @@ export const JobQueueTab: React.FC<JobQueueTabProps> = ({
             </div>
             <div className="w-full bg-white/20 h-1.5 rounded-full overflow-hidden">
               <div className="bg-secondary h-full rounded-full" style={{ width: '30%' }} />
-            </div>
-          </div>
-        </div>
-
-        <div className="lg:col-span-2 bg-white border border-outline-variant p-6 rounded-lg shadow-sm select-none">
-          <h4 className="font-bold text-primary text-sm mb-4 flex items-center gap-1.5 uppercase tracking-wide">
-            IT Worker Cluster Status
-          </h4>
-          <div className="space-y-3.5">
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-black text-outline uppercase w-28 shrink-0">Worker-01 (LDAP)</span>
-              <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-primary h-full rounded-full" style={{ width: '78%' }} />
-              </div>
-              <span className="text-[10px] font-mono font-bold text-on-surface w-10 text-right">78%</span>
-              <span className="w-2.5 h-2.5 rounded-full bg-secondary shrink-0" />
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-black text-outline uppercase w-28 shrink-0">Worker-02 (XML-RPC)</span>
-              <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-primary h-full rounded-full" style={{ width: '45%' }} />
-              </div>
-              <span className="text-[10px] font-mono font-bold text-on-surface w-10 text-right">45%</span>
-              <span className="w-2.5 h-2.5 rounded-full bg-secondary shrink-0" />
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-black text-outline uppercase w-28 shrink-0">Worker-03 (M365)</span>
-              <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-error h-full rounded-full animate-pulse" style={{ width: '94%' }} />
-              </div>
-              <span className="text-[10px] font-mono font-bold text-error w-10 text-right">94%</span>
-              <span className="w-2.5 h-2.5 rounded-full bg-error shrink-0 animate-ping" />
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-black text-outline uppercase w-28 shrink-0">Worker-04 (SMTP)</span>
-              <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-primary h-full rounded-full" style={{ width: '22%' }} />
-              </div>
-              <span className="text-[10px] font-mono font-bold text-on-surface w-10 text-right">22%</span>
-              <span className="w-2.5 h-2.5 rounded-full bg-secondary shrink-0" />
             </div>
           </div>
         </div>

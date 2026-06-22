@@ -1,36 +1,37 @@
-# Finish Summary: Resolve SQLite Table Error & Frontend Print Code Sync
+# Final Summary - SSE & Job Queue Control Actions
 
-## Verification Commands & Results
+We have successfully implemented:
+1. **Server-Sent Events (SSE)** for the job queue list to completely eliminate polling overhead.
+2. **Pause/Resume/Cancel** fully supported end-to-end on both Frontend and Backend/Worker.
+3. **Delete Job** feature (removes job and its logs from the database) available for jobs in terminal states (`success`, `failed`, `cancelled`).
+4. **UI Cleanup** - removed the mock/unused "IT worker Cluster status" footer widget.
 
-1. **Frontend Compilation Check**:
-   - Command: `npx tsc --noEmit` (in `frontend/` directory)
-   - Result: **PASS** (compiled with zero errors or warnings).
+## Verification Commands Run & Results
 
-2. **Backend Syntax Check**:
-   - Command: `python -m py_compile api/core/database.py worker/core/database.py`
-   - Result: **PASS** (syntax and module imports are correct).
-
-3. **Database self-healing Verification**:
-   - Command: `python scratch/test_db_init.py` and `python scratch/test_db_init_worker.py` (run internally and deleted after verification)
-   - Result: **PASS** (verified that SQLite databases automatically initialize the `jobs` and `job_logs` tables on first query if they do not exist).
+- **Backend Syntax Check**: `python -m py_compile api/endpoints/jobs.py` (Passed)
+- **Frontend Type Check**: `npx tsc --noEmit` (Passed)
 
 ## Summary of Changes
 
-### 1. Frontend
-- **[PDFProvisionTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/PDFProvisionTab.tsx)**:
-  - Updated `buildProvisionPayload()` to set `papercut_profile.print_code` to `finalPrintCode` (which utilizes the `calculatedPin` fallback logic).
-  - Updated the `hasPrintCode` check to use `finalPrintCode` to enable/disable PaperCut synchronization appropriately based on the description textarea / mobile fallback.
+### Backend Database (`api/core/database.py`)
+- Implemented `delete_job(job_id: str)` to delete jobs and their execution logs.
 
-### 2. Backend API
-- **[database.py (API)](file:///c:/Users/wajeepradit.p/git/profile_automate/api/core/database.py)**:
-  - Updated `get_db_connection()` to automatically run table creation logic (`_create_tables(conn)`) if the `jobs` table is missing at runtime, ensuring self-healing when database instances are wiped/mounted late.
+### Backend Endpoints (`api/endpoints/jobs.py`)
+- Added `@router.get("/stream")` to stream job list updates via EventSource/SSE when job records change.
+- Added `@router.delete("/{job_id}")` to handle deletion request for jobs in terminal states.
 
-### 3. Backend Worker
-- **[database.py (Worker)](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/core/database.py)**:
-  - Applied the identical self-healing database initialization logic to the worker's database module to ensure robust query handling.
+### Frontend Controller (`frontend/src/App.tsx`)
+- Subscribed to SSE stream endpoint `/api/v1/jobs/stream` and updated local state (`jobs`) in real-time.
+- Updated `handleControlJob` to handle the `delete` action with a `DELETE` HTTP request to backend.
 
-## Review Pass (Severity Levels)
-- **Blocker**: None (ไม่มี)
-- **Major**: None (ไม่มี)
-- **Minor**: None (ไม่มี)
-- **Nit**: None (ไม่มี)
+### Frontend Component (`frontend/src/components/JobQueueTab.tsx`)
+- Updated `onControlJob` action types signature to support `'delete'`.
+- Rendered `<Trash2>` icon next to completed/failed/cancelled jobs to trigger the delete action.
+- Removed "IT Worker Cluster Status" footer component.
+
+## Manual Validation Steps
+1. Start the API server and Worker.
+2. Launch the frontend and navigate to "Job Queue Management".
+3. Check the network log to verify the `stream` EventSource connection is active.
+4. Try to pause/resume/cancel running jobs.
+5. Trash completed/failed/cancelled jobs and verify they immediately disappear from the UI and SQLite tables.
