@@ -7,7 +7,6 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { ToastContainer } from './components/Toast';
-import { DashboardTab } from './components/DashboardTab';
 import { PDFProvisionTab } from './components/PDFProvisionTab';
 import { JobQueueTab } from './components/JobQueueTab';
 import { M365Tab } from './components/M365Tab';
@@ -16,7 +15,7 @@ import { ADExplorerTab } from './components/ADExplorerTab';
 import { DirectoryUser, Job, ToastMessage, SystemConfig, M365Sku } from './types';
 
 export default function App() {
-  const [currentTab, setTab] = useState<string>('dashboard');
+  const [currentTab, setTab] = useState<string>('pdf-provision');
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [directoryUsers, setDirectoryUsers] = useState<DirectoryUser[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -268,17 +267,6 @@ export default function App() {
         {/* Child canvas layout */}
         <div className="flex-grow overflow-y-auto custom-scrollbar px-6 py-8 lg:px-8 pb-32">
           <div className="max-w-[1200px] mx-auto">
-            {currentTab === 'dashboard' && (
-              <DashboardTab
-                users={directoryUsers}
-                onForceSync={handleForceSync}
-                onDelete={handleADDelete}
-                logs={logs}
-                clearLogs={clearLogsCommand}
-                config={config}
-              />
-            )}
-
             {currentTab === 'pdf-provision' && (
               <PDFProvisionTab
                 onAddUser={handleAddUser}

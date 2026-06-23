@@ -1,30 +1,30 @@
-# Final Summary - Sidebar Connection Status & SSE Indicator Upgrades
+# Execution Summary - UI Optimization & Navigation Enhancements
 
-We have successfully implemented:
-1. **Real-time Status Polling in Sidebar**: `Sidebar.tsx` now polls the `/api/v1/debug/system/status` endpoint every 8 seconds to show the actual connection status of Active Directory, PaperCut API, and Microsoft Graph connection status.
-2. **SSE Active UI Upgrades in Job Queue**: Replaced the spinning loader with a pulsing `Radio` icon and "SSE Active" indicator in both the active jobs stat card and individual running steps.
-3. **Menu Reorganisation**: Removed "Directory Dashboard" and moved "AD Explorer" to the "Management" section.
-
-## Verification Commands Run & Results
-- **Frontend Type Check**: `npx tsc --noEmit` inside `frontend/` (Passed successfully)
+All planned steps have been successfully executed and verified.
 
 ## Summary of Changes
 
-### Sidebar Component (`frontend/src/components/Sidebar.tsx`)
-- Imported `useState` and `useEffect` hooks.
-- Implemented status fetching from `/api/v1/debug/system/status` every 8 seconds.
-- Replaced mock badges with dynamic badges based on actual connectivity responses (MOCK ACTIVE, LIVE CONNECTED, DISCONNECTED).
-- Added an indicator badge for Microsoft Graph.
-- Removed "Directory Dashboard" from the menu.
-- Moved "AD Explorer" from "Main Panels" to the "Management" section.
+1. **Dashboard Tab Removal**:
+   - Updated [App.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/App.tsx) to default the active tab to `pdf-provision` on application reload.
+   - Removed the `DashboardTab` import and JSX render conditional statement.
+   - Deleted the unused component [DashboardTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/DashboardTab.tsx) entirely from the workspace.
 
-### Job Queue Tab (`frontend/src/components/JobQueueTab.tsx`)
-- Imported `Radio` icon from `lucide-react`.
-- Updated active step status indicator to display "SSE Active" with a pulsing `Radio` icon instead of a spinning loader.
-- Updated "Active Jobs" card to show a pulsing green indicator ("SSE Active") and a `<Radio>` pulse icon.
+2. **Back/Forward History in OU Select**:
+   - Implemented navigation history tracking in [ADUCTree.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/ADUCTree.tsx) using a stateful stack (`history` array) and `historyIndex`.
+   - Wired up the toolbar Back and Forward buttons to traverse this stack, updating selection paths dynamically.
+   - Dynamically toggles button disabled status and visual style based on history boundaries.
+
+3. **Step 2.5 Simplified Debug View**:
+   - Simplified the layout in [PDFProvisionTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/PDFProvisionTab.tsx) for Step 2.5.
+   - Removed tab buttons (Visual, Schema, Raw JSON) to present ONLY the raw JSON payload in a dark console code viewer with 4-space indentation.
+   - Added a "Copy JSON Payload" button for seamless payload extraction.
+
+## Verification & Build Results
+
+- **TypeScript compilation check (`npm run lint`)**: PASS (0 errors)
+- **Vite production bundle compilation (`npm run build`)**: PASS (Bundled successfully in 8.58s)
 
 ## Manual Validation Steps
-1. Start the backend server.
-2. Open the browser and look at the sidebar indicators. They will initially show "CHECKING..." and then transition to "MOCK ACTIVE" or "LIVE CONNECTED" once the status responds.
-3. Check the sidebar menu: verify "Directory Dashboard" is gone, and "AD Explorer" is in the Management section.
-4. Open the Job Queue tab, enqueue/run a job, and verify that active jobs display the pulsing `Radio` icon and "SSE Active" text.
+1. Refresh the web application; it should load directly into **PDF Auto-Provision**.
+2. Navigate Step 1 by scanning a template or skipping. Under Step 2, click around different OU directories inside the AD tree, then use the Back/Forward buttons in the toolbar to verify historical navigation.
+3. In Step 2, click "Debug Payload Preview" to inspect the newly simplified Step 2.5 view showing the raw JSON payload. Use the "Copy JSON Payload" button to verify clipboard integration.

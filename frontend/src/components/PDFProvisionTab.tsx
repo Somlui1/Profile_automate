@@ -104,7 +104,6 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
   // 2.5: Debug Preview
   // 3: Operation Sequence Running
   const [currentStep, setCurrentStep] = useState<1 | 2 | 2.5 | 3>(1);
-  const [debugTab, setDebugTab] = useState<'visual' | 'schema' | 'json'>('visual');
 
 
   // --- STEP 1 STATE ---
@@ -2061,65 +2060,26 @@ const handleNameTyping = (first: string, last: string) => {
           {/* Header */}
           <div className="px-6 py-4 border-b border-outline-variant flex justify-between items-center">
             <div>
-              <h3 className="font-bold text-slate-800 text-lg">Review Provisioning Payload</h3>
-              <p className="text-xs text-slate-500">Stage 2.5: Ensure all mapped values and operational triggers are correctly configured before final deployment.</p>
+              <h3 className="font-bold text-slate-800 text-lg">Review Provisioning Payload (Raw JSON)</h3>
+              <p className="text-xs text-slate-500">Stage 2.5: Ensure the raw JSON payload parameters are correct before final deployment.</p>
             </div>
-          </div>
-
-          {/* Tabs */}
-          <div className="flex border-b border-outline-variant px-6">
-            <button type="button" className={`px-4 py-3 text-xs font-bold uppercase transition-all ${debugTab === 'visual' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`} onClick={() => setDebugTab('visual')}>Visual Inspector</button>
-            <button type="button" className={`px-4 py-3 text-xs font-bold uppercase transition-all ${debugTab === 'schema' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`} onClick={() => setDebugTab('schema')}>Technical Schema</button>
-            <button type="button" className={`px-4 py-3 text-xs font-bold uppercase transition-all ${debugTab === 'json' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`} onClick={() => setDebugTab('json')}>Raw JSON</button>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(JSON.stringify(buildProvisionPayload(), null, 4));
+                addToast("คัดลอก Payload ไปยังคลิปบอร์ดแล้ว", "success");
+              }}
+              className="bg-primary hover:bg-primary-container text-white px-3 py-1.5 rounded text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+            >
+              <FileText className="h-3.5 w-3.5" /> Copy JSON Payload
+            </button>
           </div>
 
           {/* Content Area */}
-          <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
-            {debugTab === 'visual' && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                  <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">Identity & Metadata <span className="text-[10px] bg-green-100 text-green-800 px-2 py-0.5 rounded">VERIFIED</span></h4>
-                  <div className="grid grid-cols-2 gap-4 text-xs">
-                    <div><p className="text-slate-500 uppercase">Full Name</p><p className="font-bold">{displayName}</p></div>
-                    <div><p className="text-slate-500 uppercase">Employee ID</p><p className="font-bold">{description}</p></div>
-                    <div><p className="text-slate-500 uppercase">Company</p><p className="font-bold">{company}</p></div>
-                    <div><p className="text-slate-500 uppercase">Document No.</p><p className="font-bold">PRV-{Date.now().toString().slice(-6)}</p></div>
-                  </div>
-                </div>
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                  <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">Workflow Logic</h4>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between"><span>AD Object Creation</span><span className="font-bold">Enabled</span></div>
-                    <div className="flex justify-between"><span>Papercut Sync</span><span className="font-bold">Enabled</span></div>
-                    <div className="flex justify-between"><span>M365 Licensing</span><span className="font-bold">Enabled</span></div>
-                    <div className="flex justify-between text-slate-400"><span>Email Dispatching</span><span className="font-bold">{sendWelcomeEmailToggle ? 'Enabled' : 'Bypassed'}</span></div>
-                  </div>
-                </div>
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                  <h4 className="font-bold text-slate-800 mb-4">Directory Placement</h4>
-                  <p className="text-slate-500 text-[10px] uppercase">Target OU</p>
-                  <p className="text-xs font-mono bg-slate-100 p-2 rounded mb-2">{selectedDN}</p>
-                  <p className="text-slate-500 text-[10px] uppercase">Groups</p>
-                  <div className="flex flex-wrap gap-1 mt-1 text-[10px]">
-                    {adGroupsAssigned.map(g => <span key={g.name} className="bg-blue-50 text-blue-700 px-2 py-1 rounded">{g.name}</span>)}
-                  </div>
-                </div>
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                  <h4 className="font-bold text-slate-800 mb-4">Asset Allocation</h4>
-                  <p className="text-slate-500 text-[10px] uppercase">M365 SKUs</p>
-                  <ul className="text-xs mb-4">
-                    {selectedSkuIds.map(sku => <li key={sku}>{LICENSE_NAME_MAP[sku] || sku}</li>)}
-                  </ul>
-                  <p className="text-slate-500 text-[10px] uppercase">Print Code</p>
-                  <p className="text-2xl font-bold text-primary tracking-widest">{printCode}</p>
-                </div>
-              </div>
-            )}
-            {debugTab !== 'visual' && (
-              <pre className="bg-slate-900 text-slate-100 p-6 rounded-lg text-xs overflow-auto h-full font-mono leading-relaxed">
-                {JSON.stringify(buildProvisionPayload(), null, 4)}
-              </pre>
-            )}
+          <div className="flex-1 overflow-y-auto p-6 bg-slate-900 flex flex-col">
+            <pre className="text-emerald-400 font-mono text-xs overflow-auto h-full leading-relaxed select-all">
+              {JSON.stringify(buildProvisionPayload(), null, 4)}
+            </pre>
           </div>
 
           {/* Action Bar */}

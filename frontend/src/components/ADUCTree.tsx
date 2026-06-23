@@ -45,6 +45,59 @@ export const ADUCTree: React.FC<ADUCTreeProps> = ({
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
   const [activePropertyObject, setActivePropertyObject] = useState<ADObject | null>(null);
 
+  // History stack for Back/Forward navigation
+  const [history, setHistory] = useState<string[]>([selectedDN]);
+  const [historyIndex, setHistoryIndex] = useState<number>(0);
+  const [isNavigating, setIsNavigating] = useState<boolean>(false);
+
+  // Sync selectedDN with history
+  useEffect(() => {
+    if (isNavigating) {
+      setIsNavigating(false);
+      return;
+    }
+    if (selectedDN !== history[historyIndex]) {
+      const newHistory = history.slice(0, historyIndex + 1);
+      newHistory.push(selectedDN);
+      setHistory(newHistory);
+      setHistoryIndex(newHistory.length - 1);
+    }
+  }, [selectedDN]);
+
+  const handleBack = () => {
+    if (historyIndex > 0) {
+      const prevIndex = historyIndex - 1;
+      const prevDN = history[prevIndex];
+      setIsNavigating(true);
+      setHistoryIndex(prevIndex);
+      setSelectedDN(prevDN);
+      
+      const parts = prevDN.split(',');
+      const name = parts[0].split('=')[1] || prevDN;
+      setSelectedNodeName(name);
+      if (onPathChange) {
+        onPathChange(prevDN, name);
+      }
+    }
+  };
+
+  const handleForward = () => {
+    if (historyIndex < history.length - 1) {
+      const nextIndex = historyIndex + 1;
+      const nextDN = history[nextIndex];
+      setIsNavigating(true);
+      setHistoryIndex(nextIndex);
+      setSelectedDN(nextDN);
+      
+      const parts = nextDN.split(',');
+      const name = parts[0].split('=')[1] || nextDN;
+      setSelectedNodeName(name);
+      if (onPathChange) {
+        onPathChange(nextDN, name);
+      }
+    }
+  };
+
   // Load root domain nodes
   useEffect(() => {
     loadRootNodes();
@@ -272,16 +325,22 @@ export const ADUCTree: React.FC<ADUCTreeProps> = ({
         <button 
           type="button"
           title="Back"
-          disabled
-          className="aduc-btn w-6 h-6 flex items-center justify-center text-slate-400 disabled:opacity-40"
+          disabled={historyIndex === 0}
+          onClick={handleBack}
+          className={`aduc-btn w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 active:bg-slate-300 cursor-pointer ${
+            historyIndex === 0 ? 'text-slate-400 disabled:opacity-40 cursor-not-allowed hover:bg-transparent active:bg-transparent' : 'text-slate-600'
+          }`}
         >
           <ArrowLeft className="h-3.5 w-3.5" />
         </button>
         <button 
           type="button"
           title="Forward"
-          disabled
-          className="aduc-btn w-6 h-6 flex items-center justify-center text-slate-400 disabled:opacity-40"
+          disabled={historyIndex === history.length - 1}
+          onClick={handleForward}
+          className={`aduc-btn w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 active:bg-slate-300 cursor-pointer ${
+            historyIndex === history.length - 1 ? 'text-slate-400 disabled:opacity-40 cursor-not-allowed hover:bg-transparent active:bg-transparent' : 'text-slate-600'
+          }`}
         >
           <ArrowRight className="h-3.5 w-3.5" />
         </button>

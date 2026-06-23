@@ -1,38 +1,27 @@
-# Implementation Plan - Sidebar Status Indicators, SSE Active UI, and Menu Cleanup
+# Implementation Plan - UI Optimization & Navigation Enhancements
 
-## Goal
-1. Show real-time connection status for AD LDAP, Papercut, and MS Graph (Microsoft 365) in the Sidebar using dynamic polling of the Backend Status API.
-2. Change the loading/spinning icon of active/running jobs in the Job Queue Tab to a custom indicator showing that the UI is connected and listening to the SSE stream.
-3. Move the AD Explorer menu item to the "Management" section of the Sidebar, and remove the "Directory Dashboard" menu item completely.
-
-## User Review Required
-> [!NOTE]
-> The Sidebar will query `/api/v1/debug/system/status` every 8 seconds in the background to fetch actual connectivity state of AD, Papercut, and Microsoft Graph.
-
-## Open Questions
-None.
+1. **Remove Directory & Sync Dashboard**: Clean up the legacy dashboard, set the default route/tab to PDF Auto-Provision (`pdf-provision`), and remove references to `DashboardTab`.
+2. **Implement Back/Forward History in OU Select**: Add a historical navigation stack to the `ADUCTree` component toolbar so users can navigate back and forward through visited OU directories.
+3. **Simplify Step 2.5 to show only Raw JSON**: Remove tabs from the Step 2.5 debug preview, display only the raw JSON payload with clean formatting, and add a quick "Copy JSON" button.
 
 ## Proposed Changes
 
-### [Frontend Components]
+### [Dashboard Tab Removal]
+- **Modify** `frontend/src/App.tsx`:
+  - Change default `currentTab` state to `'pdf-provision'`.
+  - Remove imports and references to `DashboardTab`.
+- **Delete** `frontend/src/components/DashboardTab.tsx`.
 
-#### [MODIFY] [Sidebar.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/Sidebar.tsx)
-- Add `useState` and `useEffect` to fetch backend status from `/api/v1/debug/system/status` every 8 seconds.
-- Map the API response fields (`services.active_directory`, `services.papercut`, `services.microsoft_365`) to LDAP, Papercut, and new Microsoft Graph status badges.
-- Remove "Directory Dashboard" button from the main panels section.
-- Move "AD Explorer" button to the Management section under the "M365 Licenses" button.
+### [ADUC Tree Navigation]
+- **Modify** `frontend/src/components/ADUCTree.tsx`:
+  - Implement `history` (array of DN strings) and `historyIndex` state.
+  - Sync parent-triggered or tree-click changes to `selectedDN` with the history stack.
+  - Implement `handleBack` & `handleForward` handlers to traverse the stack.
+  - Remove `disabled` attribute from Back/Forward buttons and hook them to the handlers.
 
-#### [MODIFY] [JobQueueTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/JobQueueTab.tsx)
-- Import the `Radio` icon from `lucide-react`.
-- In `getStepStateStyle` for `'processing'` jobs, change the label to `'SSE Active'` and use the `<Radio>` icon with a pulse animation instead of `<Loader2 className="animate-spin">`.
-- Update the Active Jobs stat card indicator to display "SSE Active" with a pulsing green dot and a `<Radio>` pulse icon.
-
-## Verification Plan
-
-### Automated Tests
-None.
-
-### Manual Verification
-1. Open the app and verify the Sidebar shows real status labels (e.g., MOCK ACTIVE or LIVE CONNECTED) for AD LDAP, Papercut, and MS Graph instead of hardcoded labels.
-2. Click menu links in Sidebar and confirm "Directory Dashboard" is gone, and "AD Explorer" is in the Management section.
-3. Go to the Job Queue page, enqueue a job, and verify that running jobs display the pulsing `Radio` icon and "SSE Active" label instead of the spinning loader.
+### [PDF Provisioning Debugger]
+- **Modify** `frontend/src/components/PDFProvisionTab.tsx`:
+  - Remove `debugTab` state.
+  - Remove the tabs button layout in Step 2.5.
+  - Render only the raw JSON stringified content (`buildProvisionPayload()`) inside a clean dark code viewer.
+  - Add a "Copy JSON" button to copy the payload.
