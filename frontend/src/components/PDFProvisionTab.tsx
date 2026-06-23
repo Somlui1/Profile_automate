@@ -209,7 +209,35 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     };
   }, []);
 
-  // Update DisplayName from First and Last Name
+  // Auto-verify manager when managerInput changes (with debounce)
+  useEffect(() => {
+    if (!managerInput) {
+      setManagerVerification('idle');
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setManagerVerification('verifying');
+      try {
+        const response = await fetch(`/api/v1/user/ad/check-user?query=${encodeURIComponent(managerInput)}&exact=false`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.exists) {
+            setManagerVerification('valid');
+            if (data.username) {
+              setEmailTo(`${data.username}@aapico.com`);
+            }
+          } else {
+            setManagerVerification('invalid');
+          }
+        }
+      } catch (e) {
+        setManagerVerification('invalid');
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [managerInput]);
   
   const getStepPercent = (stepKey: string) => {
     const stepSchema = stepsSchema.find(s => s.key === stepKey);
@@ -322,8 +350,15 @@ const handleNameTyping = (first: string, last: string) => {
       else if (mgrLower.includes("somsak")) supervisorEmail = "somsak.s@aapico.com";
       else if (mgrLower.includes("vipha")) supervisorEmail = "vipha.j@aapico.com";
       else {
-        const mgrCleanName = managerInput.split(' ')[0].toLowerCase().replace(/[^a-z]/g, '');
-        supervisorEmail = `${mgrCleanName || 'supervisor'}@aapico.com`;
+        const parts = managerInput.trim().split(/\s+/);
+        if (parts.length > 1) {
+          const first = parts[0].toLowerCase().replace(/[^a-z]/g, '');
+          const last = parts[parts.length - 1].toLowerCase().replace(/[^a-z]/g, '');
+          supervisorEmail = `${first}.${last.substring(0, 1)}@aapico.com`;
+        } else {
+          const first = parts[0].toLowerCase().replace(/[^a-z]/g, '');
+          supervisorEmail = `${first || 'supervisor'}@aapico.com`;
+        }
       }
     }
 

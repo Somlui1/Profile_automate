@@ -1,37 +1,54 @@
+# Superpowers Brainstorm: Supervisor Email Auto-Mapping in PDF Provision Tab
+
 ## Goal
-Design a standardized payload definition within `worker/steps_schema.json` that acts as the Single Source of Truth (SSOT). This standard will dictate the dynamic rendering of frontend form fields, enforce required data points, indicate which fields support a "verify" action, and ensure the frontend payload perfectly matches the worker's expectations.
+Improve the UX for setting the Supervisor's email address in the "Outlook SMTP Delivery Welcome Mail Preview" ("To" field) by choosing between an auto-mapping approach or introducing a dedicated form field.
 
 ## Constraints
-- Must use `worker/steps_schema.json` as the central definition.
-- The "AD" (Active Directory) step must be enforced as mandatory in every provisioning request.
-- The frontend must parse this file to automatically generate the UI without hardcoded forms.
-- The final payload from the frontend must strictly adhere to the defined structure.
+- Must remain intuitive for administrators using the PDF Auto-Provision page.
+- Should utilize existing backend verification APIs (e.g., `/api/v1/user/ad/check-user`) if needed.
+- The mail preview's "To" field should automatically and reliably default to the correct supervisor email address based on the parsed PDF file or the user's manual entry.
 
 ## Known context
-- Currently, `worker/steps_schema.json` only defines the high-level flow (keys, display names, icons, sub_steps) but lacks data schema definitions.
-- The system is built for Auto-Provisioning (FastAPI + Worker architecture).
-- The frontend needs a way to know exactly what to prompt the user for (e.g., username, employee ID) and when to offer a "Verify" button (e.g., checking if an AD username already exists).
+- In [PDFProvisionTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/PDFProvisionTab.tsx#L320-L329), the code guesses the supervisor's email address using `managerInput` string matching (looking for specific names like `anek`, `somsak`, `vipha`) or defaults to `first_name@aapico.com`.
+- In [PDFProvisionTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/PDFProvisionTab.tsx#L764-L770), clicking the "Verify" button next to the manager field makes a backend API call to query AD and, if found, sets the mail preview's `emailTo` field to `<supervisor_username>@aapico.com`.
+- There is currently no explicit "Supervisor Email" field in the form section; it is only visible and editable in the Outlook preview panel at the bottom of the page.
 
 ## Risks
-- **Over-engineering:** Using a massive standard like full JSON-Schema might be too complex for simple UI rendering.
-- **Validation Drift:** If the worker strictly validates the payload but the frontend dynamically generates it poorly, requests will fail.
-- **Security:** Exposing verification endpoints dynamically means the API must strictly authenticate and rate-limit those "verify" calls to prevent data enumeration (e.g., guessing AD usernames).
+- **Desynchronization**: If the supervisor name is changed manually in the form, the email might not update automatically unless the user remembers to click the "Verify" button.
+- **Form Clutter**: Adding too many input fields to the Bento Grid form might make the UI look cluttered.
+- **Guessing Inaccuracy**: Relying solely on name-based guessing (`name@aapico.com`) can lead to invalid email addresses if the supervisor's actual AD logon name differs from their display name.
 
-## Options (2–4)
-1. **Custom `fields` Array (Lightweight & Specific):**
-   Add a `fields` array to each step in `steps_schema.json`. Each field defines `name`, `label`, `type` (text, email, select), `required` (boolean), and an optional `verify_action` (string or boolean). Add an `is_mandatory: true` flag to the AD step at the root level.
-2. **React JSON Schema Form (RJSF) Standard:**
-   Embed standard JSON Schema objects into the steps and use a library like `@rjsf/core` on the frontend. Use the `uiSchema` property to define which fields get custom "Verify" widgets.
-3. **Dedicated `payload_schema.json`:**
-   Keep `steps_schema.json` strictly for UI flow/stepper configuration and create a new `payload_schema.json` that defines the data contracts. The frontend merges both to render the view.
+---
+
+## Options
+
+### Option 1: Add a visible "Supervisor Email" field in the Form (Recommended)
+Add a "Supervisor Email" input field right next to or under the "Supervisor Manager" input in the form.
+- **How it works**:
+  - The PDF Parser mapping guesses or extracts the supervisor email and populates this field.
+  - Clicking "Verify" next to the supervisor's name updates this email field with the verified AD username (`username@aapico.com`).
+  - The user can edit the email directly in the form.
+  - The Outlook Mail Preview "To" field binds directly to this field's state.
+- **Pros**: Explicit, fully transparent, and allows direct manual adjustments without scrolling down to the Outlook preview.
+- **Cons**: Adds one new input field to the Bento grid.
+
+### Option 2: Enhanced Pure Auto-Mapping (Behind the Scenes)
+Keep the form fields as they are, but automatically update the Mail Preview's "To" field whenever the "Supervisor Manager" name changes, without requiring a manual click on "Verify".
+- **How it works**:
+  - Add a debounce handler or dynamic lookup that runs whenever `managerInput` changes.
+  - Guesses/looks up the username and sets `emailTo` state dynamically.
+- **Pros**: Keeps the Bento Grid form clean without adding new fields.
+- **Cons**: Less clear to the user why/how the email is determined until they scroll to the bottom preview; harder to correct if the automatic lookup guesses wrong without scrolling down.
+
+---
 
 ## Recommendation
-**Option 1 (Custom `fields` Array)** is highly recommended. It perfectly balances flexibility and simplicity. You can tailor the schema exactly to your business logic without wrestling with the heavy specifications of JSON Schema. 
+We recommend **Option 1**. Adding a visible "Supervisor Email" input field makes it extremely clear how the email mapping works. It allows the admin to verify, correct, or manually enter the supervisor's email right in the main organization details section, which naturally synchronizes down to the Outlook Preview.
 
-By adding a property like `is_mandatory: true` to the AD step, the frontend knows it cannot be skipped. By adding `verify_endpoint: "/api/v1/verify/ad-user"` to a specific field, the frontend knows to render a "Verify" button next to that input field and where to send the request.
+---
 
 ## Acceptance criteria
-- `steps_schema.json` is updated to include `is_mandatory` flags on steps.
-- `steps_schema.json` includes a `fields` array detailing the expected payload structure for each step.
-- Fields support a metadata flag (e.g., `verify_action`) to trigger UI verification buttons.
-- The final payload shape generated by the frontend aligns 1:1 with the data keys defined in the `fields` arrays.
+1. A new "Supervisor Email" input field is added in the organization details form card of Step 2.
+2. When parsing a PDF, this field is initialized using the guessed supervisor email or mapped supervisor details.
+3. Clicking the "Verify" button on the Supervisor name updates this input field directly with the resolved AD email (`<username>@aapico.com`).
+4. The Outlook Mail Preview "To" field is read-only or bi-directionally bound to this supervisor email input.

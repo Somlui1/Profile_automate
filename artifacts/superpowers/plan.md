@@ -1,27 +1,36 @@
-# Implementation Plan - UI Optimization & Navigation Enhancements
+# Implementation Plan - Supervisor Email Auto-Mapping
 
-1. **Remove Directory & Sync Dashboard**: Clean up the legacy dashboard, set the default route/tab to PDF Auto-Provision (`pdf-provision`), and remove references to `DashboardTab`.
-2. **Implement Back/Forward History in OU Select**: Add a historical navigation stack to the `ADUCTree` component toolbar so users can navigate back and forward through visited OU directories.
-3. **Simplify Step 2.5 to show only Raw JSON**: Remove tabs from the Step 2.5 debug preview, display only the raw JSON payload with clean formatting, and add a quick "Copy JSON" button.
+## Goal
+Improve the supervisor email guessing and auto-mapping functionality so that it automatically generates the correct format (`username + @aapico.com`, i.e., `firstname.l@aapico.com`) when a supervisor's name is entered or parsed, and seamlessly maps this to the "To" field of the Outlook SMTP welcome email preview.
 
-## Proposed Changes
+## Assumptions
+- The standard username format for AAPICO accounts is `firstname.l` (e.g. `Anek Phromsiri` -> `anek.p`).
+- The "Supervisor Manager Email" input field in Step 2 of the form is bound to the `emailTo` state, which also controls the SMTP Welcome Mail Preview's "To" field.
+- Automatically improving the guess format inside the existing `useEffect` will solve the default fallback mismatch (changing from `firstname@aapico.com` to `firstname.l@aapico.com`).
 
-### [Dashboard Tab Removal]
-- **Modify** `frontend/src/App.tsx`:
-  - Change default `currentTab` state to `'pdf-provision'`.
-  - Remove imports and references to `DashboardTab`.
-- **Delete** `frontend/src/components/DashboardTab.tsx`.
+## Plan
 
-### [ADUC Tree Navigation]
-- **Modify** `frontend/src/components/ADUCTree.tsx`:
-  - Implement `history` (array of DN strings) and `historyIndex` state.
-  - Sync parent-triggered or tree-click changes to `selectedDN` with the history stack.
-  - Implement `handleBack` & `handleForward` handlers to traverse the stack.
-  - Remove `disabled` attribute from Back/Forward buttons and hook them to the handlers.
+### Step 1: Update Email Guessing Logic in PDFProvisionTab.tsx
+- **Files**: [PDFProvisionTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/PDFProvisionTab.tsx)
+- **Change**: Replace the fallback guessing logic inside `useEffect` to construct `firstname.l@aapico.com` instead of just `firstname@aapico.com`.
+  - Extract the first name and the first letter of the last name from `managerInput`.
+  - Update `supervisorEmail` output logic.
+- **Verify**: Inspect `PDFProvisionTab.tsx` around the changed lines.
 
-### [PDF Provisioning Debugger]
-- **Modify** `frontend/src/components/PDFProvisionTab.tsx`:
-  - Remove `debugTab` state.
-  - Remove the tabs button layout in Step 2.5.
-  - Render only the raw JSON stringified content (`buildProvisionPayload()`) inside a clean dark code viewer.
-  - Add a "Copy JSON" button to copy the payload.
+### Step 2: Implement Auto-Verification lookup on Manager Input change
+- **Files**: [PDFProvisionTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/PDFProvisionTab.tsx)
+- **Change**: Add an automatic trigger or improve `handleVerifyManager` to run when the PDF is parsed, so it automatically queries the LDAP AD backend to resolve the real supervisor email address and status badge, without requiring the admin to click the "Verify" button.
+- **Verify**: Run `npm run lint` to ensure no syntax/type errors.
+
+### Step 3: Run full bundle build
+- **Files**: None
+- **Change**: Run production bundle build `npm run build` in the `frontend` directory.
+- **Verify**: The build command should complete successfully.
+
+## Risks & mitigations
+- **Risk**: Automatic background lookups on every keystroke could spam the AD backend.
+- **Mitigation**: We will only trigger the automatic lookup when the manager name changes via PDF parsing (initial load) or manual input completion, rather than on every keystroke, or ensure the manual "Verify" button remains as the primary source of truth while the default fallback guess is corrected to `firstname.l@aapico.com`.
+
+## Rollback plan
+- Use Git to restore files to their pre-change state:
+  `git checkout -- frontend/src/components/PDFProvisionTab.tsx`

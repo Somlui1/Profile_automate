@@ -1,44 +1,20 @@
-# Execution Notes - UI Optimization & Navigation Enhancements
+# Execution Notes - Supervisor Email Auto-Mapping
 
 This log records the steps taken during execution of the approved plan.
 
-## Step 1: Remove Dashboard tab reference and files
-- **Files changed**:
-  - [App.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/App.tsx)
-  - [DashboardTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/DashboardTab.tsx) (Deleted)
-- **Changes**:
-  - Removed DashboardTab import and JSX block.
-  - Set default active tab state to `pdf-provision`.
-  - Deleted `DashboardTab.tsx` file from component store.
-- **Verification**: Built and verified that no build errors occur and app loads directly to PDF Auto-Provision page.
-- **Result**: PASS
-
-## Step 2: Implement Back/Forward history in ADUCTree.tsx
-- **Files changed**:
-  - [ADUCTree.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/ADUCTree.tsx)
-- **Changes**:
-  - Added state hook variables `history` (to track visited paths) and `historyIndex`.
-  - Added `useEffect` hook to capture path updates and slice/push to history stack.
-  - Implemented `handleBack` and `handleForward` navigation handlers.
-  - Updated Back/Forward buttons in the toolbar to invoke handlers and conditionally toggle disabled states and styles.
-- **Verification**: Built project successfully without any issues.
-- **Result**: PASS
-
-## Step 3: Simplify Step 2.5 in PDFProvisionTab.tsx to show only raw JSON
+## Step 1: Update Email Guessing Logic in PDFProvisionTab.tsx
 - **Files changed**:
   - [PDFProvisionTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/PDFProvisionTab.tsx)
 - **Changes**:
-  - Removed the `debugTab` state definition.
-  - Removed the tab layout markup (Visual, Schema, Raw JSON tabs).
-  - Modified the render block to output only the raw JSON payload in a beautifully-spaced dark code viewer.
-  - Added an elegant "Copy JSON Payload" button using `FileText` and `navigator.clipboard` to easily copy the generated payload.
-- **Verification**: Built project successfully without any issues.
+  - Modified the fallback guessing logic inside `useEffect` (for Welcome Mail compiler) to construct standard `first_name.last_initial@aapico.com` format when the supervisor manager input has a first and last name.
+- **Verification**: Built and verified code syntax via editor compilation.
 - **Result**: PASS
 
-## Step 4: Verify changes and build the application
-- **Files changed**: None
+## Step 2: Implement Auto-Verification lookup on Manager Input change
+- **Files changed**:
+  - [PDFProvisionTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/PDFProvisionTab.tsx)
 - **Changes**:
-  - Ran `npm run lint` (`tsc --noEmit`) to verify static types.
-  - Ran `npm run build` (`vite build`) to verify the production bundle.
-- **Verification**: All commands completed successfully with zero compilation or syntax errors.
+  - Added a debounced `useEffect` on `managerInput` that runs automatically 800ms after the manager name changes (whether from manual typing or PDF parser extraction).
+  - It queries AD using `/api/v1/user/ad/check-user` and, if found, sets the Supervisor Email (`emailTo`) to the supervisor's true AD username + `@aapico.com`.
+- **Verification**: Built and verified code syntax via compiler check.
 - **Result**: PASS
