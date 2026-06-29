@@ -33,6 +33,10 @@ services:
       # so that the container serves the optimized build bundled during docker build.
       # - ./frontend:/app/frontend:ro
       - ./data:/app/data
+      # Kerberos mounts (required for production Kerberos auth)
+      # Note: Comment these out if running locally without Kerberos setup
+      - /opt/keytabs/HTTP.keytab:/etc/security/keytabs/HTTP.keytab:ro
+      - /etc/krb5.conf:/etc/krb5.conf:ro
     depends_on:
       redis:
         condition: service_healthy
@@ -47,6 +51,10 @@ services:
       - DEBUG_MODE=false
     volumes:
       - ./data:/app/data
+      # Kerberos mounts (required for production Kerberos auth)
+      # Note: Comment these out if running locally without Kerberos setup
+      - /opt/keytabs/HTTP.keytab:/etc/security/keytabs/HTTP.keytab:ro
+      - /etc/krb5.conf:/etc/krb5.conf:ro
     depends_on:
       redis:
         condition: service_healthy

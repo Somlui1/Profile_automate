@@ -1,54 +1,63 @@
-# Superpowers Brainstorm: Supervisor Email Auto-Mapping in PDF Provision Tab
+# Brainstorm: Use Keytab instead of Password for AD connection in worker & api
 
 ## Goal
-Improve the UX for setting the Supervisor's email address in the "Outlook SMTP Delivery Welcome Mail Preview" ("To" field) by choosing between an auto-mapping approach or introducing a dedicated form field.
+Modify the \pi\ and \worker\ services to authenticate with Active Directory (AD) using a Kerberos keytab file (\/opt/keytabs/HTTP.keytab\ located on the Linux production host \qaubuntu01\) instead of the plaintext password configured in \.env\.
 
 ## Constraints
-- Must remain intuitive for administrators using the PDF Auto-Provision page.
-- Should utilize existing backend verification APIs (e.g., `/api/v1/user/ad/check-user`) if needed.
-- The mail preview's "To" field should automatically and reliably default to the correct supervisor email address based on the parsed PDF file or the user's manual entry.
+1. **Containerized Environment**: Both \pi\ and \worker\ run in Docker containers based on \python:3.11-slim\.
+2. **Access to Host Keytab**: The keytab file \/opt/keytabs/HTTP.keytab\ resides on the host and must be made securely available inside the Docker containers.
+3. **No Password Fallback on Prod**: Production must use Kerberos authentication exclusively (or prioritize it), while allowing developers to fall back to password or mock authentication for local development.
+4. **Kerberos Requirements**: Active Directory domain controllers must be resolved via FQDN (IP addresses cannot be used with Kerberos authentication). Time skew between host/container and KDC must be under 5 minutes.
 
 ## Known context
-- In [PDFProvisionTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/PDFProvisionTab.tsx#L320-L329), the code guesses the supervisor's email address using `managerInput` string matching (looking for specific names like `anek`, `somsak`, `vipha`) or defaults to `first_name@aapico.com`.
-- In [PDFProvisionTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/PDFProvisionTab.tsx#L764-L770), clicking the "Verify" button next to the manager field makes a backend API call to query AD and, if found, sets the mail preview's `emailTo` field to `<supervisor_username>@aapico.com`.
-- There is currently no explicit "Supervisor Email" field in the form section; it is only visible and editable in the Outlook preview panel at the bottom of the page.
+- The keytab path on host: \/opt/keytabs/HTTP.keytab\.
+- Both \pi\ and \worker\ use Python \ldap3\ via their respective \d_service.py\ files.
+- The \pi\ and \worker\ use Docker Compose (\docker-compose.yml\) and share a \.env\ configuration file.
 
 ## Risks
-- **Desynchronization**: If the supervisor name is changed manually in the form, the email might not update automatically unless the user remembers to click the "Verify" button.
-- **Form Clutter**: Adding too many input fields to the Bento Grid form might make the UI look cluttered.
-- **Guessing Inaccuracy**: Relying solely on name-based guessing (`name@aapico.com`) can lead to invalid email addresses if the supervisor's actual AD logon name differs from their display name.
+1. **Ticket Expiration**: Kerberos tickets (TGT) expire after a set time (typically 10-24 hours). If not renewed or re-obtained, the LDAP connection will fail.
+2. **DNS & FQDN resolution**: Containers must be able to resolve the FQDN of the Domain Controller. If DNS is misconfigured in Docker, Kerberos authentication will fail.
+3. **Time Sync**: If the container's system clock drifts from the Active Directory Domain Controller by more than 5 minutes, Kerberos handshakes will fail with \KRB5KRB_AP_ERR_SKEW\.
+4. **Permissions on Keytab**: The keytab file mounted inside the container must be readable by the user running the Python process.
 
----
+## Options (2?4)
 
-## Options
+### Option 1: Authenticate via \kinit\ in an Entrypoint Wrapper Script (Recommended)
+- **Concept**: Add a wrapper shell script as the Docker entrypoint. This script runs \kinit -kt /etc/security/keytabs/HTTP.keytab <PRINCIPAL>\ to obtain a ticket-granting ticket (TGT) before launching the main Python process.
+- **Python implementation**: Modify \d_service.py\ to use \SASL\ with mechanism \KERBEROS\ if Kerberos is enabled via environment variables. \ldap3\ will automatically pick up the Kerberos ticket from the default credentials cache.
+- **Pros**: 
+  - Standard, robust pattern in container environments.
+  - Easy debugging (can log in to container and run \klist\).
+  - Python code does not need to handle credentials/keytab files directly; it just uses the OS Kerberos ticket cache.
+- **Cons**: Requires adding a wrapper script and modifying the \CMD\ or \ENTRYPOINT\ in both Dockerfiles.
 
-### Option 1: Add a visible "Supervisor Email" field in the Form (Recommended)
-Add a "Supervisor Email" input field right next to or under the "Supervisor Manager" input in the form.
-- **How it works**:
-  - The PDF Parser mapping guesses or extracts the supervisor email and populates this field.
-  - Clicking "Verify" next to the supervisor's name updates this email field with the verified AD username (`username@aapico.com`).
-  - The user can edit the email directly in the form.
-  - The Outlook Mail Preview "To" field binds directly to this field's state.
-- **Pros**: Explicit, fully transparent, and allows direct manual adjustments without scrolling down to the Outlook preview.
-- **Cons**: Adds one new input field to the Bento grid.
-
-### Option 2: Enhanced Pure Auto-Mapping (Behind the Scenes)
-Keep the form fields as they are, but automatically update the Mail Preview's "To" field whenever the "Supervisor Manager" name changes, without requiring a manual click on "Verify".
-- **How it works**:
-  - Add a debounce handler or dynamic lookup that runs whenever `managerInput` changes.
-  - Guesses/looks up the username and sets `emailTo` state dynamically.
-- **Pros**: Keeps the Bento Grid form clean without adding new fields.
-- **Cons**: Less clear to the user why/how the email is determined until they scroll to the bottom preview; harder to correct if the automatic lookup guesses wrong without scrolling down.
-
----
+### Option 2: Direct Keytab Authentication inside Python using \gssapi\ Client Credentials
+- **Concept**: Set the environment variable \KRB5_CLIENT_KTNAME=/etc/security/keytabs/HTTP.keytab\ and pass the principal name to the Python environment or configure GSSAPI initialization.
+- **Python implementation**: The \gssapi\ library uses the keytab automatically to establish context during the SASL bind.
+- **Pros**:
+  - No need for wrapper shell scripts or running \kinit\ in entrypoint.
+- **Cons**:
+  - Harder to debug Kerberos issues (cannot easily use \klist\).
+  - Less standard and more dependent on the specific behavior of the \gssapi\ Python package and underlying GSSAPI library implementation.
 
 ## Recommendation
-We recommend **Option 1**. Adding a visible "Supervisor Email" input field makes it extremely clear how the email mapping works. It allows the admin to verify, correct, or manually enter the supervisor's email right in the main organization details section, which naturally synchronizes down to the Outlook Preview.
-
----
+We recommend **Option 1 (Pre-authenticate using \kinit\ in an Entrypoint Wrapper Script)** combined with a flag (\AD_AUTH_METHOD=kerberos\) in the \.env\ configuration.
+This ensures:
+1. Complete visibility into Kerberos errors on startup.
+2. Safe fallbacks for developers who don't have local Kerberos set up.
+3. Clear separation of concerns (OS/Docker handles Kerberos ticket management, Python application handles LDAP queries).
 
 ## Acceptance criteria
-1. A new "Supervisor Email" input field is added in the organization details form card of Step 2.
-2. When parsing a PDF, this field is initialized using the guessed supervisor email or mapped supervisor details.
-3. Clicking the "Verify" button on the Supervisor name updates this input field directly with the resolved AD email (`<username>@aapico.com`).
-4. The Outlook Mail Preview "To" field is read-only or bi-directionally bound to this supervisor email input.
+1. **Container Setup**:
+   - Both \pi\ and \worker\ Dockerfiles install \krb5-user\, \libkrb5-dev\, and \gcc\.
+   - \gssapi\ is added to \
+equirements.txt\.
+   - \docker-compose.yml\ mounts the keytab directory \/opt/keytabs\ to \/etc/security/keytabs:ro\ and \/etc/krb5.conf\ to \/etc/krb5.conf:ro\.
+2. **Environment Configuration**:
+   - A new environment variable \AD_AUTH_METHOD\ (values: \simple\, \kerberos\) controls the auth mode.
+   - \AD_HOSTS\ contains the FQDNs of the Domain Controllers (e.g. \dc01.aapico.com\), not IPs.
+   - \KRB5_PRINCIPAL\ specifies the Kerberos principal to authenticate with.
+3. **Application Verification**:
+   - If \AD_AUTH_METHOD=kerberos\, the application connects to AD without requiring \AD_PASSWORD\.
+   - If \AD_AUTH_METHOD=simple\, the application falls back to standard user/password authentication.
+   - The test script or worker starts successfully and can query/write to AD in production using the keytab.

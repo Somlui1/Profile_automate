@@ -22,6 +22,9 @@ class Settings:
     AD_BASE_DN: str = os.getenv("AD_BASE_DN", "DC=aapico,DC=com")
     AD_NEW_HIRE_OU: str = os.getenv("AD_NEW_HIRE_OU", "")
     AD_CONTRACT_OU: str = os.getenv("AD_CONTRACT_OU", "")
+    AD_AUTH_METHOD: str = os.getenv("AD_AUTH_METHOD", "simple")
+    KRB5_PRINCIPAL: str = os.getenv("KRB5_PRINCIPAL", "")
+    KRB5_KEYTAB: str = os.getenv("KRB5_KEYTAB", "")
 
     # Active Directory / LDAP for Worker (isolated credentials)
     WORKER_AD_HOSTS_RAW: str = os.getenv("WORKER_AD_HOSTS", os.getenv("AD_HOSTS", ""))
@@ -30,6 +33,9 @@ class Settings:
     WORKER_AD_BASE_DN: str = os.getenv("WORKER_AD_BASE_DN", os.getenv("AD_BASE_DN", "DC=aapico,DC=com"))
     WORKER_AD_NEW_HIRE_OU: str = os.getenv("WORKER_AD_NEW_HIRE_OU", os.getenv("AD_NEW_HIRE_OU", ""))
     WORKER_AD_CONTRACT_OU: str = os.getenv("WORKER_AD_CONTRACT_OU", os.getenv("AD_CONTRACT_OU", ""))
+    WORKER_AD_AUTH_METHOD: str = os.getenv("WORKER_AD_AUTH_METHOD", os.getenv("AD_AUTH_METHOD", "simple"))
+    WORKER_KRB5_PRINCIPAL: str = os.getenv("WORKER_KRB5_PRINCIPAL", os.getenv("KRB5_PRINCIPAL", ""))
+    WORKER_KRB5_KEYTAB: str = os.getenv("WORKER_KRB5_KEYTAB", os.getenv("KRB5_KEYTAB", ""))
 
     @property
     def AD_HOSTS(self) -> List[str]:

@@ -49,9 +49,14 @@ class ActiveDirectoryService:
         self.new_hire_ou: str = settings.AD_NEW_HIRE_OU
         self.contract_ou: str = settings.AD_CONTRACT_OU
         
+        self.auth_method = getattr(settings, "AD_AUTH_METHOD", "simple").lower()
+        
         # Determine if real AD connection works
         has_hosts = len(self.ad_hosts) > 0
-        has_creds = bool(self.bind_dn and self.bind_password)
+        if self.auth_method == "kerberos":
+            has_creds = True
+        else:
+            has_creds = bool(self.bind_dn and self.bind_password)
         self._real_ad_working = False
         
         if (has_hosts and has_creds) and LDAP_AVAILABLE:
@@ -96,7 +101,13 @@ class ActiveDirectoryService:
         if settings.SYSTEM_MODE == "mock":
             return True
         has_hosts = len(self.ad_hosts) > 0
-        has_creds = bool(self.bind_dn and self.bind_password)
+        
+        auth_method = getattr(settings, "AD_AUTH_METHOD", "simple").lower()
+        if auth_method == "kerberos":
+            has_creds = True
+        else:
+            has_creds = bool(self.bind_dn and self.bind_password)
+            
         if not (has_hosts and has_creds) or not LDAP_AVAILABLE:
             return True
         return not self._real_ad_working
@@ -141,14 +152,30 @@ class ActiveDirectoryService:
         pool = ServerPool(servers, ROUND_ROBIN, active=True, exhaust=True)
         
         try:
-            conn = Connection(
-                pool,
-                user=self.bind_dn,
-                password=self.bind_password,
-                auto_bind=True,
-                receive_timeout=3,
-                check_names=False
-            )
+            if self.auth_method == "kerberos":
+                from ldap3 import SASL, KERBEROS
+                import os
+                # Ensure the client ktname is set for GSSAPI
+                if settings.KRB5_KEYTAB:
+                    os.environ['KRB5_CLIENT_KTNAME'] = settings.KRB5_KEYTAB
+                    
+                conn = Connection(
+                    pool,
+                    authentication=SASL,
+                    sasl_mechanism=KERBEROS,
+                    auto_bind=True,
+                    receive_timeout=3,
+                    check_names=False
+                )
+            else:
+                conn = Connection(
+                    pool,
+                    user=self.bind_dn,
+                    password=self.bind_password,
+                    auto_bind=True,
+                    receive_timeout=3,
+                    check_names=False
+                )
             logger.debug(f"LDAP connection established to: {conn.server.host}")
             return conn
         except Exception as e:

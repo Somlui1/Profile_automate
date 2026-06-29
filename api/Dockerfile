@@ -14,6 +14,13 @@ RUN npm run build
 FROM python:3.11-slim
 WORKDIR /app
 
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    krb5-user \
+    libkrb5-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies
 COPY api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -28,4 +35,7 @@ COPY worker/steps_schema.json ./worker/steps_schema.json
 COPY --from=frontend-builder /build/dist ./frontend/dist
 
 EXPOSE 8000
+COPY api/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

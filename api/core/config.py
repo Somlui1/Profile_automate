@@ -22,6 +22,9 @@ class Settings:
     AD_BASE_DN: str = os.getenv("AD_BASE_DN", "DC=aapico,DC=com")
     AD_NEW_HIRE_OU: str = os.getenv("AD_NEW_HIRE_OU", "")
     AD_CONTRACT_OU: str = os.getenv("AD_CONTRACT_OU", "")
+    AD_AUTH_METHOD: str = os.getenv("AD_AUTH_METHOD", "simple")
+    KRB5_PRINCIPAL: str = os.getenv("KRB5_PRINCIPAL", "")
+    KRB5_KEYTAB: str = os.getenv("KRB5_KEYTAB", "")
 
     @property
     def AD_HOSTS(self) -> List[str]:
@@ -35,6 +38,9 @@ class Settings:
     WORKER_AD_USER: str = os.getenv("WORKER_AD_USER", "")
     WORKER_AD_PASSWORD: str = os.getenv("WORKER_AD_PASSWORD", "")
     WORKER_AD_BASE_DN: str = os.getenv("WORKER_AD_BASE_DN", "")
+    WORKER_AD_AUTH_METHOD: str = os.getenv("WORKER_AD_AUTH_METHOD", os.getenv("AD_AUTH_METHOD", "simple"))
+    WORKER_KRB5_PRINCIPAL: str = os.getenv("WORKER_KRB5_PRINCIPAL", os.getenv("KRB5_PRINCIPAL", ""))
+    WORKER_KRB5_KEYTAB: str = os.getenv("WORKER_KRB5_KEYTAB", os.getenv("KRB5_KEYTAB", ""))
 
     @property
     def WORKER_AD_HOSTS(self) -> List[str]:

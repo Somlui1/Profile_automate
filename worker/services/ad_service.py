@@ -28,11 +28,17 @@ class ActiveDirectoryService:
         
         # Determine mock mode: respects SYSTEM_MODE or checks credentials/library
         has_hosts = len(self.ad_hosts) > 0
-        has_creds = bool(self.bind_dn and self.bind_password)
+        
+        self.auth_method = settings.WORKER_AD_AUTH_METHOD.lower()
+        if self.auth_method == "kerberos":
+            has_auth = True # Kerberos relies on the system ticket cache
+        else:
+            has_auth = bool(self.bind_dn and self.bind_password)
+
         if settings.SYSTEM_MODE == "mock":
             self.mock_mode = True
         else:
-            self.mock_mode = not (has_hosts and has_creds) or not LDAP_AVAILABLE
+            self.mock_mode = not (has_hosts and has_auth) or not LDAP_AVAILABLE
 
         
         if self.mock_mode:
@@ -94,13 +100,28 @@ class ActiveDirectoryService:
         pool = ServerPool(servers, ROUND_ROBIN, active=True, exhaust=True)
         
         try:
-            conn = Connection(
-                pool,
-                user=self.bind_dn,
-                password=self.bind_password,
-                auto_bind=True,
-                receive_timeout=3
-            )
+            if self.auth_method == "kerberos":
+                from ldap3 import SASL, KERBEROS
+                import os
+                # Ensure the client ktname is set for GSSAPI
+                if settings.WORKER_KRB5_KEYTAB:
+                    os.environ['KRB5_CLIENT_KTNAME'] = settings.WORKER_KRB5_KEYTAB
+                    
+                conn = Connection(
+                    pool,
+                    authentication=SASL,
+                    sasl_mechanism=KERBEROS,
+                    auto_bind=True,
+                    receive_timeout=3
+                )
+            else:
+                conn = Connection(
+                    pool,
+                    user=self.bind_dn,
+                    password=self.bind_password,
+                    auto_bind=True,
+                    receive_timeout=3
+                )
             logger.debug(f"LDAP connection established to: {conn.server.host}")
             return conn
         except Exception as e:

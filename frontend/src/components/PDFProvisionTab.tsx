@@ -238,7 +238,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
 
     return () => clearTimeout(timer);
   }, [managerInput]);
-  
+
   const getStepPercent = (stepKey: string) => {
     const stepSchema = stepsSchema.find(s => s.key === stepKey);
     if (!stepSchema || !stepSchema.sub_steps || stepSchema.sub_steps.length === 0) return pipelineStates[stepKey] === 'SUCCESS' ? 100 : 0;
@@ -246,8 +246,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     const total = stepSchema.sub_steps.length;
     let completed = 0;
     stepSchema.sub_steps.forEach((sub: any) => {
-        if (subState[sub.key] === 'SUCCESS') completed += 1;
-        else if (subState[sub.key] === 'RUNNING') completed += 0.5;
+      if (subState[sub.key] === 'SUCCESS') completed += 1;
+      else if (subState[sub.key] === 'RUNNING') completed += 0.5;
     });
     return Math.round((completed / total) * 100);
   };
@@ -269,7 +269,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     return <Icon className="h-5 w-5" />;
   };
 
-const handleNameTyping = (first: string, last: string) => {
+  const handleNameTyping = (first: string, last: string) => {
     setFirstName(first);
     setLastName(last);
     setDisplayName(`${first} ${last}`.trim());
@@ -278,7 +278,7 @@ const handleNameTyping = (first: string, last: string) => {
     }
   };
 
-  
+
   const fetchStepsSchema = async () => {
     try {
       const res = await fetch('/api/v1/jobs/steps');
@@ -1030,7 +1030,7 @@ const handleNameTyping = (first: string, last: string) => {
     setCurrentPipelineStep(1);
     setPipelineOverallState('PROCESSING');
     setTerminalLogs([`[${new Date().toLocaleTimeString()}] // REST API Pipeline initiated...`]);
-    
+
 
     // Switch view bounds
     setCurrentStep(3);
@@ -1074,7 +1074,7 @@ const handleNameTyping = (first: string, last: string) => {
           const { step, status, message, metadata } = log;
 
           setTerminalData(`[${step.toUpperCase()}] ${message}`);
-          
+
           if (step === 'pipeline') return;
 
           setPipelineStates(prev => {
@@ -1082,15 +1082,15 @@ const handleNameTyping = (first: string, last: string) => {
             if (newStatus === 'PENDING') newStatus = 'RUNNING';
             return { ...prev, [step]: newStatus };
           });
-          
+
           if (metadata && metadata.sub_step) {
-             setPipelineSubStates(prev => ({
-                ...prev,
-                [step]: {
-                    ...(prev[step] || {}),
-                    [metadata.sub_step]: metadata.sub_step_status.toUpperCase()
-                }
-             }));
+            setPipelineSubStates(prev => ({
+              ...prev,
+              [step]: {
+                ...(prev[step] || {}),
+                [metadata.sub_step]: metadata.sub_step_status.toUpperCase()
+              }
+            }));
           }
         } catch (err) {
           console.error("Error parsing step_update SSE event data:", err);
@@ -1291,11 +1291,10 @@ const handleNameTyping = (first: string, last: string) => {
                 }
               }}
               onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed p-8 rounded-lg text-center transition-all cursor-pointer select-none group ${
-                isDragging 
-                  ? 'border-primary bg-primary/5 scale-[1.02] shadow-md ring-1 ring-primary/20' 
-                  : 'border-outline-variant bg-surface-container-lowest hover:border-primary hover:bg-slate-50/50'
-              }`}
+              className={`border-2 border-dashed p-8 rounded-lg text-center transition-all cursor-pointer select-none group ${isDragging
+                ? 'border-primary bg-primary/5 scale-[1.02] shadow-md ring-1 ring-primary/20'
+                : 'border-outline-variant bg-surface-container-lowest hover:border-primary hover:bg-slate-50/50'
+                }`}
             >
               <input
                 type="file"
@@ -1308,9 +1307,8 @@ const handleNameTyping = (first: string, last: string) => {
                   }
                 }}
               />
-              <Upload className={`h-10 w-10 mx-auto mb-2.5 transition-all ${
-                isDragging ? 'text-primary scale-110' : 'text-outline group-hover:text-primary'
-              }`} />
+              <Upload className={`h-10 w-10 mx-auto mb-2.5 transition-all ${isDragging ? 'text-primary scale-110' : 'text-outline group-hover:text-primary'
+                }`} />
               <span className="text-xs font-bold text-slate-800 block mb-1">
                 {isDragging ? 'วางไฟล์ที่นี่เพื่อเริ่มสแกน' : 'ลากไฟล์ PDF คำร้องมาวางที่นี่ หรือคลิกเพื่ออัปโหลด'}
               </span>
@@ -2183,7 +2181,7 @@ const handleNameTyping = (first: string, last: string) => {
                   const state = pipelineStates[step.key] || 'STANDBY';
                   const percent = getStepPercent(step.key);
                   const subStates = pipelineSubStates[step.key] || {};
-                  
+
                   return (
                     <div key={step.key} className={`flex gap-4 p-4 rounded-xl border relative z-10 transition-all duration-300 ${getStageStyle(state).card}`}>
                       <div className="shrink-0">
