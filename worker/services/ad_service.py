@@ -5,7 +5,7 @@ from core.exceptions import ActiveDirectoryError
 
 # Try importing ldap3
 try:
-    from ldap3 import Server, Connection, ServerPool, ALL, SUBTREE, LEVEL, MODIFY_REPLACE, ROUND_ROBIN
+    from ldap3 import Server, Connection, ServerPool, ALL, SUBTREE, LEVEL, MODIFY_ADD, MODIFY_REPLACE, ROUND_ROBIN
     LDAP_AVAILABLE = True
 except ImportError:
     LDAP_AVAILABLE = False
@@ -340,7 +340,7 @@ class ActiveDirectoryService:
             if password:
                 try:
                     encoded_password = f'"{password}"'.encode('utf-16-le')
-                    if conn.modify(user_dn, {'unicodePwd': [(2, [encoded_password])]}):
+                    if conn.modify(user_dn, {'unicodePwd': [(MODIFY_REPLACE, [encoded_password])]}):
                         logger.info("Successfully updated unicodePwd (password) for user")
                     else:
                         logger.warning(f"Failed to set password: {conn.result}")
@@ -351,7 +351,7 @@ class ActiveDirectoryService:
             change_pwd = custom_attrs.get("change_password_next_logon", True)
             try:
                 pwd_val = '0' if change_pwd else '-1'
-                if conn.modify(user_dn, {'pwdLastSet': [(2, [pwd_val])]}):
+                if conn.modify(user_dn, {'pwdLastSet': [(MODIFY_REPLACE, [pwd_val])]}):
                     logger.info(f"Successfully set pwdLastSet to {pwd_val}")
                 else:
                     logger.warning(f"Failed to set pwdLastSet to {pwd_val}: {conn.result}")
@@ -373,7 +373,7 @@ class ActiveDirectoryService:
                 uac |= 0x00400000  # SMARTCARD_REQUIRED
                 
             try:
-                if conn.modify(user_dn, {'userAccountControl': [(2, [str(uac)])]}):
+                if conn.modify(user_dn, {'userAccountControl': [(MODIFY_REPLACE, [str(uac)])]}):
                     logger.info(f"Successfully updated userAccountControl to {uac}")
                 else:
                     logger.warning(f"Failed to update userAccountControl: {conn.result}")
@@ -403,7 +403,7 @@ class ActiveDirectoryService:
                             
                     if group_dn:
                         try:
-                            conn.modify(group_dn, {'member': [(0, [user_dn])]})
+                            conn.modify(group_dn, {'member': [(MODIFY_ADD, [user_dn])]})
                             logger.info(f"Added user to group: {group_dn}")
                         except Exception as grp_err:
                             logger.warning(f"Failed to add user to group {group_dn}: {grp_err}")
