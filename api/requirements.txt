@@ -10,3 +10,4 @@ rq>=1.16.0
 sse-starlette>=2.0.0
 rq-dashboard>=0.6.7
 gssapi>=1.8.0
+cryptography>=3.1
