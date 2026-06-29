@@ -37,6 +37,9 @@ services:
       # Note: Comment these out if running locally without Kerberos setup
       - /opt/keytabs/HTTP.keytab:/etc/security/keytabs/HTTP.keytab:ro
       - /etc/krb5.conf:/etc/krb5.conf:ro
+    extra_hosts:
+      # Map FQDN to IP for Kerberos since production has no DNS for it
+      - "ahdomain.aapico.com:10.10.10.250"
     depends_on:
       redis:
         condition: service_healthy
@@ -55,6 +58,9 @@ services:
       # Note: Comment these out if running locally without Kerberos setup
       - /opt/keytabs/HTTP.keytab:/etc/security/keytabs/HTTP.keytab:ro
       - /etc/krb5.conf:/etc/krb5.conf:ro
+    extra_hosts:
+      # Map FQDN to IP for Kerberos since production has no DNS for it
+      - "ahdomain.aapico.com:10.10.10.250"
     depends_on:
       redis:
         condition: service_healthy
