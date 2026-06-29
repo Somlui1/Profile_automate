@@ -11,7 +11,7 @@ import {
   ToastMessage,
   SystemConfig
 } from '../types';
-import { ADUCTree } from './ADUCTree';
+
 import {
   Upload,
   ArrowLeft,
@@ -140,8 +140,10 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
   const [jobTitle, setJobTitle] = useState('');
   const [managerInput, setManagerInput] = useState('');
 
-  const [selectedDN, setSelectedDN] = useState('DC=aapico,DC=com');
-  const [selectedOUName, setSelectedNodeName] = useState('aapico.com');
+  const defaultOU = import.meta.env.VITE_TARGET_OU || 'OU=New_employee,DC=aapico,DC=com';
+  const defaultOUName = defaultOU.split(',')[0].replace('OU=', '').replace('DC=', '');
+  const [selectedDN, setSelectedDN] = useState(defaultOU);
+  const [selectedOUName, setSelectedNodeName] = useState(defaultOUName);
 
   const [profilePath, setProfilePath] = useState('');
   const [logonScript, setLogonScript] = useState('');
@@ -601,12 +603,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     let phoneDigits = req.mobile_phone ? req.mobile_phone.replace(/\D/g, '') : '';
     let autoPin = phoneDigits.length >= 6 ? phoneDigits.slice(-6) : phoneDigits;
 
-    let ouDN = "OU=newhire,OU=Users,DC=aapico,DC=com";
-    if (req.department && req.department.toLowerCase().includes("engineering")) {
-      ouDN = "OU=Engineering,OU=Users,DC=aapico,DC=com";
-    } else if (req.department && req.department.toLowerCase().includes("human resources")) {
-      ouDN = "OU=Human Resources,OU=Users,DC=aapico,DC=com";
-    }
+    let ouDN = import.meta.env.VITE_TARGET_OU || "OU=New_employee,DC=aapico,DC=com";
 
     let defaultGroups: ADGroup[] = [
       { name: "Domain Users", scope: "Global", desc: "Default domain users security group membership" }
@@ -714,8 +711,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     setDisplayName('');
     setEmail('');
     setUsernameLogon('');
-    setSelectedDN('OU=newhire,OU=Users,DC=aapico,DC=com');
-    setSelectedNodeName('newhire');
+    setSelectedDN(import.meta.env.VITE_TARGET_OU || 'OU=New_employee,DC=aapico,DC=com');
+    setSelectedNodeName((import.meta.env.VITE_TARGET_OU || 'OU=New_employee,DC=aapico,DC=com').split(',')[0].replace('OU=', '').replace('DC=', ''));
     setPrintCode('');
     setMobile('');
     setManagerInput('');
@@ -736,8 +733,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     setDisplayName('');
     setEmail('');
     setUsernameLogon('');
-    setSelectedDN('OU=newhire,OU=Users,DC=aapico,DC=com');
-    setSelectedNodeName('newhire');
+    setSelectedDN(import.meta.env.VITE_TARGET_OU || 'OU=New_employee,DC=aapico,DC=com');
+    setSelectedNodeName((import.meta.env.VITE_TARGET_OU || 'OU=New_employee,DC=aapico,DC=com').split(',')[0].replace('OU=', '').replace('DC=', ''));
     setPrintCode('');
     setMobile('');
     setPhone('');
@@ -1565,32 +1562,22 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
 
                 {/* Directory Store OU Placement Selector */}
                 <div className="bg-surface p-6 rounded-xl border border-outline-variant shadow-sm space-y-4">
-                  <h4 className="text-xs uppercase font-black text-primary tracking-wider border-b pb-2 border-outline-variant">
-                    การจัดเก็บ Organizational Unit (OU)
+                  <h4 className="text-xs uppercase font-black text-primary tracking-wider border-b pb-2 border-outline-variant flex items-center gap-1.5">
+                    <Folder className="h-4.5 w-4.5 shrink-0" /> การจัดเก็บ Organizational Unit (OU)
                   </h4>
                   <p className="text-[11px] text-outline font-medium">
-                    คลิกเลือกโฟลเดอร์ OU/Container บนโครงสร้างไดเรกทอรีด้านล่างเพื่อเป็นพาธปลายทางในการสร้าง Account Objectจริง
+                    บัญชีนี้จะถูกสร้างภายใต้ตำแหน่งที่กำหนดโดยระบบ (อ้างอิงจากสิทธิ์ของ Service Account ปัจจุบัน)
                   </p>
-
-                  {/* Embedded ADUC Tree */}
-                  <ADUCTree
-                    selectedDN={selectedDN}
-                    setSelectedDN={setSelectedDN}
-                    onPathChange={(dn, name) => {
-                      setSelectedDN(dn);
-                      setSelectedNodeName(name);
-                    }}
-                  />
-
-                  {/* Highlight Path strip */}
-                  <div className="p-3 bg-surface-container-low border border-outline-variant rounded flex items-center gap-3">
+                  
+                  <div className="p-3 bg-surface-container-low border border-outline-variant rounded flex items-center gap-3 opacity-80 cursor-not-allowed">
                     <Folder className="h-5 w-5 text-primary shrink-0" />
                     <div className="min-w-0 flex-grow">
-                      <p className="text-[9px] font-black text-outline uppercase tracking-wider leading-none">Target LDAP DN Path</p>
+                      <p className="text-[9px] font-black text-outline uppercase tracking-wider leading-none">Target LDAP DN Path (Read-only)</p>
                       <p className="text-xs font-mono font-bold text-primary truncate mt-0.5" title={selectedDN}>
                         {selectedDN}
                       </p>
                     </div>
+                    <Lock className="h-4 w-4 text-slate-400 shrink-0" />
                   </div>
                 </div>
 
