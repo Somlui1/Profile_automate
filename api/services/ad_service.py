@@ -155,9 +155,7 @@ class ActiveDirectoryService:
             if self.auth_method == "kerberos":
                 from ldap3 import SASL, KERBEROS
                 import os
-                # Ensure the client ktname is set for GSSAPI
-                if settings.KRB5_KEYTAB:
-                    os.environ['KRB5_CLIENT_KTNAME'] = settings.KRB5_KEYTAB
+                # gssapi will automatically use the TGT from kinit in entrypoint.sh
                     
                 conn = Connection(
                     pool,

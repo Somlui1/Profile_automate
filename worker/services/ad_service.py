@@ -47,7 +47,7 @@ class ActiveDirectoryService:
                 reason.append("ldap3 library not installed")
             if not has_hosts:
                 reason.append("AD_HOSTS not configured")
-            if not has_creds:
+            if not has_auth:
                 reason.append("AD_USER or AD_PASSWORD missing")
             logger.warning(
                 f"Active Directory LDAP is running in MOCK MODE. "
@@ -103,9 +103,7 @@ class ActiveDirectoryService:
             if self.auth_method == "kerberos":
                 from ldap3 import SASL, KERBEROS
                 import os
-                # Ensure the client ktname is set for GSSAPI
-                if settings.WORKER_KRB5_KEYTAB:
-                    os.environ['KRB5_CLIENT_KTNAME'] = settings.WORKER_KRB5_KEYTAB
+                # gssapi will automatically use the TGT from kinit in entrypoint.sh
                     
                 conn = Connection(
                     pool,

@@ -66,10 +66,17 @@ def _print_startup_banner():
         ad_reasons.append("ldap3 not installed")
     if not settings.AD_HOSTS:
         ad_reasons.append("AD_HOSTS empty")
-    if not (settings.AD_USER and settings.AD_PASSWORD):
-        ad_reasons.append("AD credentials missing")
-    if settings.AD_HOSTS and settings.AD_USER and ldap_available and not ad_service._real_ad_working:
-        ad_reasons.append("connection failed at startup")
+    auth_method = getattr(settings, "AD_AUTH_METHOD", "simple").lower()
+    if auth_method == "kerberos":
+        if not getattr(settings, "KRB5_PRINCIPAL", None):
+            ad_reasons.append("KRB5_PRINCIPAL missing")
+        elif settings.AD_HOSTS and ldap_available and not ad_service._real_ad_working:
+            ad_reasons.append("connection failed at startup")
+    else:
+        if not (settings.AD_USER and settings.AD_PASSWORD):
+            ad_reasons.append("AD credentials missing")
+        elif settings.AD_HOSTS and settings.AD_USER and ldap_available and not ad_service._real_ad_working:
+            ad_reasons.append("connection failed at startup")
 
     pc_reasons = []
     if system_mode == "mock":
