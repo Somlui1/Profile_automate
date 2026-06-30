@@ -962,7 +962,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
             display_name: displayName,
             description: description,
             office: company || "",
-            telephone_number: phone || "{To be specified in Step 2}",
+            telephone_number: phone || "",
             email: email,
             mobile: mobile,
             title: jobTitle,
@@ -974,8 +974,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
             state_province: stateName,
             zip_postal_code: zipCode,
             country_region: country,
-            profile_path: profilePath || "{To be specified in Step 2}",
-            logon_script: logonScript || "{To be specified in Step 2}",
+            profile_path: profilePath || "",
+            logon_script: logonScript || "",
             change_password_next_logon: true,
             account_disabled: false,
             password: "P@ssw0rd$",
@@ -1544,6 +1544,19 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                         type="text"
                         value={office}
                         onChange={(e) => setOffice(e.target.value)}
+                        className="w-full p-2.5 border border-outline-variant bg-surface-bright rounded text-sm outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="font-bold text-xs uppercase text-slate-500 block">Telephone Number (เบอร์โทรศัพท์)</label>
+                      <input
+                        type="text"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="เช่น 02-111-2222"
                         className="w-full p-2.5 border border-outline-variant bg-surface-bright rounded text-sm outline-none"
                       />
                     </div>

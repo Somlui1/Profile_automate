@@ -25,9 +25,11 @@ from core.config import settings
 from core.database import init_db
 
 app = FastAPI(
+
     title="AD User & Print Code Sync API",
     description="3-tier API service to parse request PDFs, provision AD accounts, and configure Papercut printer PINs.",
     version="1.0.0"
+    
 )
 
 @app.on_event("startup")
