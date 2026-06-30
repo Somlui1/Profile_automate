@@ -209,7 +209,7 @@ export const useProvisionStore = create<ProvisionState>((set) => ({
   setMobile: (val) => set({ mobile: val }),
   printCode: '',
   setPrintCode: (val) => set({ printCode: val }),
-  internetType: 'Standard',
+  internetType: 'A',
   setInternetType: (val) => set({ internetType: val }),
 
   street: '',
@@ -344,7 +344,7 @@ export const useProvisionStore = create<ProvisionState>((set) => ({
     stateName: '',
     zipCode: '',
     country: 'Thailand',
-    internetType: 'Standard',
+    internetType: 'A',
     company: '',
     department: '',
     jobTitle: '',

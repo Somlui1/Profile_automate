@@ -1933,9 +1933,10 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                         onChange={(e) => setInternetType(e.target.value)}
                         className="w-full text-xs p-2.5 border border-outline-variant bg-surface-bright rounded outline-none appearance-none"
                       >
-                        <option value="Standard">Standard</option>
-                        <option value="Full Access">Full Access</option>
-                        <option value="No Access">No Access</option>
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="D">D</option>
                       </select>
                     </div>
 
