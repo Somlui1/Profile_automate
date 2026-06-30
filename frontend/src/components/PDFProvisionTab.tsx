@@ -1466,7 +1466,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                       <button
                         type="button"
                         onClick={() => setDisplayName(`${firstName} ${lastName}`.trim())}
-                        className="px-3 bg-primary text-on-primary font-black uppercase rounded text-[10px] tracking-widest hover:bg-primary-container cursor-pointer transition-colors shrink-0 h-10"
+                        className="px-3 bg-primary text-on-primary font-white uppercase rounded text-[10px] tracking-widest hover:bg-primary-container cursor-pointer transition-colors shrink-0 h-10"
                       >
                         Auto-generate
                       </button>
@@ -1582,7 +1582,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                   <p className="text-[11px] text-outline font-medium">
                     บัญชีนี้จะถูกสร้างภายใต้ตำแหน่งที่กำหนดโดยระบบ (อ้างอิงจากสิทธิ์ของ Service Account ปัจจุบัน)
                   </p>
-                  
+
                   <div className="p-3 bg-surface-container-low border border-outline-variant rounded flex items-center gap-3 opacity-80 cursor-not-allowed">
                     <Folder className="h-5 w-5 text-primary shrink-0" />
                     <div className="min-w-0 flex-grow">
