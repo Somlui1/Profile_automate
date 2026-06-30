@@ -85,6 +85,7 @@ To facilitate autonomous AI development and prevent context hallucination, the r
 * **Framework**: React 19 (Single-page application)
 * **Build Tool**: Vite 6 (With `manualChunks` vendor splitting for extreme optimization)
 * **Styling**: Tailwind CSS v4 & Motion
+* **State Management**: Zustand (Global cross-tab persistence)
 * **Icons**: Lucide React (Using Explicit Mapping for Tree-Shaking)
 
 ### 2. Backend REST API
@@ -153,6 +154,7 @@ sequenceDiagram
 ├── frontend/                 
 │   ├── ARCHITECTURE.md       # React/Vite boundary rules
 │   ├── src/                  
+│   │   └── stores/           # Zustand global state stores
 │   └── vite.config.ts        # Optimized with Vendor chunking
 │
 ├── data/                     # SQLite storage (jobs.db)

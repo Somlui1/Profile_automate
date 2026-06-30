@@ -267,7 +267,7 @@ export default function App() {
         {/* Child canvas layout */}
         <div className="flex-grow overflow-y-auto custom-scrollbar px-6 py-8 lg:px-8 pb-32">
           <div className="max-w-[1200px] mx-auto">
-            {currentTab === 'pdf-provision' && (
+            <div className={currentTab === 'pdf-provision' ? 'block' : 'hidden'}>
               <PDFProvisionTab
                 onAddUser={handleAddUser}
                 addToast={addToast}
@@ -275,39 +275,39 @@ export default function App() {
                 config={config}
                 onJobCreated={fetchJobs}
               />
-            )}
+            </div>
 
-            {currentTab === 'job-queue' && (
+            <div className={currentTab === 'job-queue' ? 'block' : 'hidden'}>
               <JobQueueTab
                 jobs={jobs}
                 onControlJob={handleControlJob}
                 addToast={addToast}
               />
-            )}
+            </div>
 
-            {currentTab === 'm365' && (
+            <div className={currentTab === 'm365' ? 'block' : 'hidden'}>
               <M365Tab
                 licenses={licenses}
                 onRefresh={fetchLicenses}
                 loading={loadingLicenses}
               />
-            )}
+            </div>
 
-            {currentTab === 'settings' && (
+            <div className={currentTab === 'settings' ? 'block' : 'hidden'}>
               <SettingsTab
                 config={config}
                 onSaveConfig={setConfig}
                 addToast={addToast}
                 addLog={addLog}
               />
-            )}
+            </div>
 
-            {currentTab === 'ad-explorer' && (
+            <div className={currentTab === 'ad-explorer' ? 'block' : 'hidden'}>
               <ADExplorerTab
                 users={directoryUsers}
                 config={config}
               />
-            )}
+            </div>
           </div>
         </div>
 

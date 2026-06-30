@@ -17,6 +17,7 @@ This project is an automated IT provisioning system with a **3-tier architecture
    - A **Zero-Change UI architecture**.
    - Components dynamically render based on `/api/v1/jobs/steps` (which serves `steps_schema.json`).
    - Uses Tailwind CSS and Lucide React (Explicitly mapped) for styling.
+   - Uses **Zustand** for cross-tab state persistence (e.g. form data).
 
 ## AI Development Rules
 - **Do not hardcode UI logic** for the workflow steps in React. Any new step must be added to `worker/steps_schema.json` and handled by the Python worker. The UI will render it automatically.

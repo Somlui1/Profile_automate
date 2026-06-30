@@ -1,127 +1,115 @@
-# Implementation Plan: Keytab authentication for AD connection in worker & api
-
 ## Goal
-Modify the `api` and `worker` services to authenticate with Active Directory (AD) using a Kerberos keytab file instead of plaintext password in `.env`.
-
-## Kerberos Configuration (from msktutil)
-
-| Parameter | Value |
-|---|---|
-| Service Account | `svc-admin-it` |
-| Kerberos Realm | `AAPICO.COM` |
-| KDC / Domain Controller | `ahdomain.aapico.com` |
-| SPN | `HTTPS/hub-itcenter.aapico.com` |
-| Principal | `svc-admin-it@AAPICO.COM` |
-| Keytab Path (Host) | `/opt/keytabs/HTTP.keytab` |
-| Keytab Path (Container) | `/etc/security/keytabs/HTTP.keytab` |
+Preserve PDFProvisionTab form state across tab switches by adopting **Zustand** global state management ? the most sustainable, debuggable, and future-proof approach (Option 2 from brainstorm). Also update all relevant documentation (README, ARCHITECTURE files).
 
 ## Assumptions
-1. Keytab file is already created on Linux production host at `/opt/keytabs/HTTP.keytab`.
-2. Kerberos configuration `/etc/krb5.conf` is properly configured on the production host with realm `AAPICO.COM` and KDC `ahdomain.aapico.com`.
-3. Dual-mode support: The system supports both `simple` (password) and `kerberos` (keytab) authentication methods, controlled via `AD_AUTH_METHOD` in `.env`.
-4. `AD_HOSTS` must use FQDN `ahdomain.aapico.com` (not IP) when using Kerberos mode.
-
-## .env Configuration (new variables)
-
-```dotenv
-# --- Kerberos Authentication (Production) ---
-AD_AUTH_METHOD=kerberos
-AD_HOSTS=ahdomain.aapico.com
-KRB5_PRINCIPAL=svc-admin-it@AAPICO.COM
-KRB5_KEYTAB=/etc/security/keytabs/HTTP.keytab
-```
+- PDFProvisionTab has ~45 local `useState` variables that need to be migrated.
+- No other tabs (JobQueueTab, M365Tab, ADExplorerTab, SettingsTab) require state persistence at this stage ? only PDFProvisionTab is affected.
+- The `zustand` npm package (~1.5kB gzipped) is acceptable as a new dependency and will not bloat the vendor chunk.
+- Vite's `manualChunks` in `vite.config.ts` may need a small update to include `zustand` in the vendor chunk.
+- The `useRef` variables (`scrollRef`, `eventSourceRef`, `fileInputRef`) will **remain local** in the component because refs are DOM-bound and should not be globalized.
+- Side-effect hooks (`useEffect` for SSE, license fetch, debounced manager verification) will remain inside the component and read from the store instead of local state.
 
 ## Plan
 
-### Step 1: Install OS and Python dependencies for Kerberos
-* **Files**: 
-  * [api/Dockerfile](file:///c:/Users/wajeepradit.p/git/profile_automate/api/Dockerfile)
-  * [worker/Dockerfile](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/Dockerfile)
-  * [api/requirements.txt](file:///c:/Users/wajeepradit.p/git/profile_automate/api/requirements.txt)
-  * [worker/requirements.txt](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/requirements.txt)
-* **Change**:
-  * Install `krb5-user`, `libkrb5-dev`, and `gcc` in both Dockerfiles.
-  * Add `gssapi>=1.8.0` to both `requirements.txt` files.
-* **Verify**:
-  * Build docker images and verify packages compile successfully.
+### Step 1 ? Install Zustand
+**Files:** `frontend/package.json`
+**Change:** Run `npm install zustand` inside the `frontend/` directory.
+**Verify:** `grep zustand frontend/package.json` shows the new dependency.
 
 ---
 
-### Step 2: Add Configuration Settings for Kerberos authentication
-* **Files**:
-  * [worker/core/config.py](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/core/config.py)
-  * [.env.example](file:///c:/Users/wajeepradit.p/git/profile_automate/.env.example)
-* **Change**:
-  * Add new settings in `config.py`:
-    * `AD_AUTH_METHOD` — values: `simple` (default) or `kerberos`
-    * `KRB5_PRINCIPAL` — e.g. `svc-admin-it@AAPICO.COM`
-    * `KRB5_KEYTAB` — e.g. `/etc/security/keytabs/HTTP.keytab`
-  * Add `WORKER_AD_AUTH_METHOD`, `WORKER_KRB5_PRINCIPAL`, `WORKER_KRB5_KEYTAB` (with fallback to non-prefixed versions, matching existing pattern).
-  * Update `.env.example` with the new variables and comments.
-* **Verify**:
-  * `.\.venv\Scripts\python.exe -c "import sys; sys.path.insert(0,'worker'); from core.config import settings; print(settings.AD_AUTH_METHOD)"`
-
-> [!NOTE]
-> `api` shares the same `config.py` pattern. The `api/core/config.py` will also need the same variables added.
+### Step 2 ? Create the Zustand Store file
+**Files:** `frontend/src/stores/provisionStore.ts` [NEW]
+**Change:** Create a new file with a Zustand store that contains:
+  - All ~45 state variables currently declared via `useState` in PDFProvisionTab (lines 106?199).
+  - Setter actions for each variable (matching current setter names like `setFirstName`, `setLastName`, etc.).
+  - A `resetForm()` action that resets all form fields back to initial defaults (useful when a job is submitted successfully and the form needs clearing).
+  - Group the state into logical slices using comments: Step1 State, Step2 Form State, Step2 Licenses, Step2 AD Groups, Step2 Modals, Step3 Pipeline.
+  - Export a typed `useProvisionStore` hook.
+**Verify:** `npx tsc --noEmit` passes with no type errors in the new file.
 
 ---
 
-### Step 3: Modify connection logic in ad_service to support SASL GSSAPI
-* **Files**:
-  * [api/services/ad_service.py](file:///c:/Users/wajeepradit.p/git/profile_automate/api/services/ad_service.py)
-  * [worker/services/ad_service.py](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/services/ad_service.py)
-* **Change**:
-  * Update `__init__` to read `AD_AUTH_METHOD` and store it.
-  * Update `mock_mode` check: when `AD_AUTH_METHOD == "kerberos"`, do not require `AD_USER`/`AD_PASSWORD`.
-  * Modify `_get_connection()`:
-    * If `kerberos`: set `KRB5_CLIENT_KTNAME` env var, use `authentication=SASL`, `sasl_mechanism=KERBEROS` (no user/password).
-    * If `simple`: keep current behavior (user/password bind).
-* **Verify**:
-  * `.\.venv\Scripts\python.exe -m py_compile api\services\ad_service.py`
-  * `.\.venv\Scripts\python.exe -m py_compile worker\services\ad_service.py`
+### Step 3 ? Refactor PDFProvisionTab to consume the store
+**Files:** `frontend/src/components/PDFProvisionTab.tsx` [MODIFY]
+**Change:**
+  - Remove all ~45 `useState` declarations (lines 106?199).
+  - Replace with a single destructured call: `const { firstName, setFirstName, ... } = useProvisionStore();`
+  - Keep `useRef` declarations (`scrollRef`, `eventSourceRef`, `fileInputRef`) as local refs ? these are DOM-specific.
+  - Keep all `useEffect` hooks and handler functions in place ? they will simply read/write via the store setters instead of local state setters.
+  - The component signature (props) stays exactly the same.
+**Verify:** `npx tsc --noEmit` passes. Build with `npm run build` to confirm no runtime chunk errors.
 
 ---
 
-### Step 4: Create Entrypoint scripts to perform kinit
-* **Files**:
-  * `[NEW]` [api/entrypoint.sh](file:///c:/Users/wajeepradit.p/git/profile_automate/api/entrypoint.sh)
-  * `[NEW]` [worker/entrypoint.sh](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/entrypoint.sh)
-  * [api/Dockerfile](file:///c:/Users/wajeepradit.p/git/profile_automate/api/Dockerfile)
-  * [worker/Dockerfile](file:///c:/Users/wajeepradit.p/git/profile_automate/worker/Dockerfile)
-* **Change**:
-  * Create `entrypoint.sh` that:
-    1. Checks if `AD_AUTH_METHOD == kerberos`
-    2. Runs `kinit -kt "$KRB5_KEYTAB" "$KRB5_PRINCIPAL"` to obtain TGT
-    3. Runs `klist` to log the ticket info
-    4. Executes the original CMD (`exec "$@"`)
-  * Update Dockerfiles to `COPY entrypoint.sh`, `RUN chmod +x`, and set as `ENTRYPOINT`.
-* **Verify**:
-  * Confirm entrypoint scripts use UNIX style (LF) line endings.
+### Step 4 ? Update App.tsx tab rendering (CSS hidden approach as safety net)
+**Files:** `frontend/src/App.tsx` [MODIFY]
+**Change:** As an additional safety net and performance bonus, change the tab rendering from conditional mounting (`{currentTab === 'pdf-provision' && <PDFProvisionTab />}`) to CSS-based hiding using wrapper divs:
+  - `<div className={currentTab === 'pdf-provision' ? 'block' : 'hidden'}><PDFProvisionTab .../></div>`
+  - Apply the same pattern to all tabs for consistency.
+  - This is a **belt-and-suspenders** approach: Zustand preserves state even if the component unmounts, and CSS hidden prevents unmount entirely. Together they provide the most robust experience.
+**Verify:** Open the app in the browser, fill out PDFProvisionTab form, switch tabs, switch back ? all form data persists.
 
 ---
 
-### Step 5: Update docker-compose.yml to mount keytab and krb5.conf
-* **Files**:
-  * [docker-compose.yml](file:///c:/Users/wajeepradit.p/git/profile_automate/docker-compose.yml)
-* **Change**:
-  * Mount `/opt/keytabs/HTTP.keytab` → `/etc/security/keytabs/HTTP.keytab:ro` for both `api` and `worker`.
-  * Mount `/etc/krb5.conf` → `/etc/krb5.conf:ro` for both `api` and `worker`.
-  * Add environment variables `AD_AUTH_METHOD`, `KRB5_PRINCIPAL`, `KRB5_KEYTAB` (read from `.env`).
-* **Verify**:
-  * `docker compose config` to validate YAML syntax.
+### Step 5 ? Update Vite config for vendor chunking
+**Files:** `frontend/vite.config.ts` [MODIFY]
+**Change:** Add `zustand` to the `manualChunks.vendor` array so it ships with other framework code instead of as a separate chunk.
+**Verify:** `npm run build` ? check that `dist/assets/vendor-*.js` includes zustand and total chunk size increase is < 3kB.
 
 ---
+
+### Step 6 ? Update frontend/ARCHITECTURE.md
+**Files:** `frontend/ARCHITECTURE.md` [MODIFY]
+**Change:** Add a new section (Section 5) titled **"State Management (Zustand)"** documenting:
+  - Why Zustand was chosen (lightweight, no boilerplate, devtools support).
+  - The store file location (`src/stores/provisionStore.ts`).
+  - The convention: Form-heavy tabs use Zustand stores; simple tabs may keep local state.
+  - The `resetForm()` pattern for clearing state after job submission.
+**Verify:** File renders correctly as markdown.
+
+---
+
+### Step 7 ? Update root ARCHITECTURE.md
+**Files:** `ARCHITECTURE.md` [MODIFY]
+**Change:** Under the Frontend Tier bullet, add mention of Zustand for cross-tab state persistence.
+**Verify:** File renders correctly as markdown.
+
+---
+
+### Step 8 ? Update README.md
+**Files:** `README.md` [MODIFY]
+**Change:**
+  - In the Technology Stack > Frontend Client section, add `Zustand` as a bullet for state management.
+  - In the Project Directory Structure, add `stores/` under `frontend/src/`.
+**Verify:** File renders correctly as markdown.
+
+---
+
+### Step 9 ? Final integration test
+**Files:** None (manual verification)
+**Change:** None ? this is a verification-only step.
+**Verify:**
+  1. `npm run build` succeeds with no errors.
+  2. Open the built app in a browser.
+  3. Navigate to PDFProvisionTab, fill in several fields (name, email, department, etc.).
+  4. Switch to Job Queue tab, then M365 tab.
+  5. Switch back to PDFProvisionTab ? all fields retain their values.
+  6. Submit a job and confirm `resetForm()` clears the form correctly.
 
 ## Risks & mitigations
-* **Risk: Permissions issue on mounted Keytab file.**
-  * *Mitigation*: Ensure keytab file on host has read permissions (`chmod 644` or at minimum readable by Docker user).
-* **Risk: Ticket expiration during long-running processes.**
-  * *Mitigation*: Add a periodic `kinit` renewal (cron or background loop) inside entrypoint, or rely on GSSAPI auto-renewal.
-* **Risk: DNS resolution failure for FQDN inside container.**
-  * *Mitigation*: Ensure Docker network DNS can resolve `ahdomain.aapico.com`. Use `dns` option in docker-compose if needed.
-* **Risk: Time skew between container and AD (>5 min causes KRB5KRB_AP_ERR_SKEW).**
-  * *Mitigation*: Docker inherits host clock by default. Ensure host NTP is synced.
+
+| Risk | Mitigation |
+|------|-----------|
+| Zustand store has a large surface (~45 variables) which could be error-prone during migration | Group variables into logical slices with TypeScript interfaces; use `npx tsc --noEmit` after each sub-step |
+| `useEffect` hooks that depend on local state might behave differently with store state | Zustand state changes trigger re-renders identically to `useState`; no behavioral change expected |
+| SSE `EventSource` ref cleanup on unmount won't fire if component stays mounted (CSS hidden) | The `useEffect` cleanup still runs on full page unload; for tab switches it's actually better that SSE stays alive |
+| Vendor chunk size increase | Zustand is ~1.5kB gzipped ? negligible impact |
+| Breaking the Zero-Change UI architecture | This change is purely frontend state management ? it does not touch the schema-driven rendering logic |
 
 ## Rollback plan
-1. Switch `AD_AUTH_METHOD=simple` in `.env` on production — immediate fallback to password auth.
-2. Revert code changes in git if needed.
+1. `git revert` the commits made during execution.
+2. `cd frontend && npm uninstall zustand` to remove the dependency.
+3. Delete `frontend/src/stores/provisionStore.ts`.
+4. Restore `PDFProvisionTab.tsx` and `App.tsx` from git history.
+5. `npm run build` to verify clean rollback.

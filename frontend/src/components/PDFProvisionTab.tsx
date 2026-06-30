@@ -11,6 +11,7 @@ import {
   ToastMessage,
   SystemConfig
 } from '../types';
+import { useProvisionStore } from '../stores/provisionStore';
 
 import {
   Upload,
@@ -103,100 +104,77 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
   // 2: Verify & Edit Fields
   // 2.5: Debug Preview
   // 3: Operation Sequence Running
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 2.5 | 3>(1);
+  const {
+    currentStep, setCurrentStep,
+    pdfUrl, setPdfUrl,
+    parsingStatus, setParsingStatus,
+    rawJsonOutput, setRawJsonOutput,
+    mappedJsonOutput, setMappedJsonOutput,
+    autoFillPrintCode, setAutoFillPrintCode,
+    isDragging, setIsDragging,
+    firstName, setFirstName,
+    lastName, setLastName,
+    displayName, setDisplayName,
+    description, setDescription,
+    email, setEmail,
+    usernameLogon, setUsernameLogon,
+    userPassword, setUserPassword,
+    showPassword, setShowPassword,
+    office, setOffice,
+    phone, setPhone,
+    mobile, setMobile,
+    printCode, setPrintCode,
+    street, setStreet,
+    city, setCity,
+    stateName, setStateName,
+    zipCode, setZipCode,
+    country, setCountry,
+    company, setCompany,
+    department, setDepartment,
+    jobTitle, setJobTitle,
+    managerInput, setManagerInput,
+    selectedDN, setSelectedDN,
+    selectedOUName, setSelectedNodeName,
+    profilePath, setProfilePath,
+    logonScript, setLogonScript,
+    pwdResetOnFirstLogon, setPwdResetOnFirstLogon,
+    accountEnabled, setAccountEnabled,
+    sendWelcomeEmailToggle, setSendWelcomeEmailToggle,
+    isLoadingLicenses, setIsLoadingLicenses,
+    isFetchingLicenses, setIsFetchingLicenses,
+    isLoadingTemplate, setIsLoadingTemplate,
+    emailTo, setEmailTo,
+    prevManagerInput, setPrevManagerInput,
+    emailCc, setEmailCc,
+    emailSubject, setEmailSubject,
+    emailBody, setEmailBody,
+    defaultTemplate, setDefaultEmailTemplate,
+    selectedSkuIds, setSelectedSkuIds,
+    licenses, setLicenses,
+    licenseSearch, setLicenseSearch,
+    adGroupsAssigned, setAdGroupsMembership,
+    logonVerification, setLogonVerification,
+    managerVerification, setManagerVerification,
+    isFindGroupsOpen, setIsFindGroupsOpen,
+    searchGroupQuery, setSearchGroupQuery,
+    foundGroupsList, setFoundGroupsList,
+    searchingGroups, setSearchingGroups,
+    selectedGroupFromModal, setSelectedGroupFromModal,
+    isBulkGroupsOpen, setIsBulkGroupsOpen,
+    bulkGroupsText, setBulkGroupsText,
+    bulkGroupsList, setBulkGroupsList,
+    verifyingBulkGroups, setVerifyingBulkGroups,
+    showAdGroups, setShowAdGroups,
+    currentPipelineStep, setCurrentPipelineStep,
+    stepsSchema, setStepsSchema,
+    pipelineStates, setPipelineStates,
+    pipelineSubStates, setPipelineSubStates,
+    pipelineState, setPipelineOverallState,
+    customTerminalLogs, setTerminalLogs,
+    resetForm
+  } = useProvisionStore();
 
-
-  // --- STEP 1 STATE ---
-  const [pdfUrl, setPdfUrl] = useState('');
-  const [parsingStatus, setParsingStatus] = useState<'idle' | 'parsing' | 'success'>('idle');
-  const [rawJsonOutput, setRawJsonOutput] = useState<string>('{}');
-  const [mappedJsonOutput, setMappedJsonOutput] = useState<string>('{}');
-  const [autoFillPrintCode, setAutoFillPrintCode] = useState(true);
-  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // --- STEP 2 FORM STATE ---
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [description, setDescription] = useState('');
-  const [email, setEmail] = useState('');
-  const [usernameLogon, setUsernameLogon] = useState('');
-  const [userPassword, setUserPassword] = useState('P@ssw0rd$');
-  const [showPassword, setShowPassword] = useState(false);
-  const [office, setOffice] = useState('');
-  const [phone, setPhone] = useState('');
-  const [mobile, setMobile] = useState('');
-  const [printCode, setPrintCode] = useState('');
-
-  const [street, setStreet] = useState('');
-  const [city, setCity] = useState('');
-  const [stateName, setStateName] = useState('');
-  const [zipCode, setZipCode] = useState('');
-  const [country, setCountry] = useState('Thailand');
-
-  const [company, setCompany] = useState('');
-  const [department, setDepartment] = useState('');
-  const [jobTitle, setJobTitle] = useState('');
-  const [managerInput, setManagerInput] = useState('');
-
-  const defaultOU = import.meta.env.VITE_TARGET_OU || 'OU=New_employee,DC=aapico,DC=com';
-  const defaultOUName = defaultOU.split(',')[0].replace('OU=', '').replace('DC=', '');
-  const [selectedDN, setSelectedDN] = useState(defaultOU);
-  const [selectedOUName, setSelectedNodeName] = useState(defaultOUName);
-
-  const [profilePath, setProfilePath] = useState('');
-  const [logonScript, setLogonScript] = useState('');
-  const [pwdResetOnFirstLogon, setPwdResetOnFirstLogon] = useState(true);
-  const [accountEnabled, setAccountEnabled] = useState(true);
-  const [sendWelcomeEmailToggle, setSendWelcomeEmailToggle] = useState(true);
-
-  const [isLoadingLicenses, setIsLoadingLicenses] = useState(true);
-  const [isFetchingLicenses, setIsFetchingLicenses] = useState(false);
-  const [isLoadingTemplate, setIsLoadingTemplate] = useState(true);
-
-  // Email Preview Editor
-  const [emailTo, setEmailTo] = useState('');
-  const [prevManagerInput, setPrevManagerInput] = useState('');
-  const [emailCc, setEmailCc] = useState('it.support@aapico.com');
-  const [emailSubject, setEmailSubject] = useState('');
-  const [emailBody, setEmailBody] = useState('');
-  const [defaultTemplate, setDefaultEmailTemplate] = useState('');
-
-  // Selected licenses
-  const [selectedSkuIds, setSelectedSkuIds] = useState<string[]>([]);
-  const [licenses, setLicenses] = useState<M365Sku[]>([]);
-  const [licenseSearch, setLicenseSearch] = useState('');
-
-  // AD Groups Membership list
-  const [adGroupsAssigned, setAdGroupsMembership] = useState<ADGroup[]>([
-    { name: "Domain Users", scope: "Global", desc: "Default domain users security group membership" }
-  ]);
-
-  // Verification indicators
-  const [logonVerification, setLogonVerification] = useState<'idle' | 'verifying' | 'valid' | 'invalid'>('idle');
-  const [managerVerification, setManagerVerification] = useState<'idle' | 'verifying' | 'valid' | 'invalid'>('idle');
-
-  // --- MODALS STATES ---
-  const [isFindGroupsOpen, setIsFindGroupsOpen] = useState(false);
-  const [searchGroupQuery, setSearchGroupQuery] = useState('');
-  const [foundGroupsList, setFoundGroupsList] = useState<ADGroup[]>([]);
-  const [searchingGroups, setSearchingGroups] = useState(false);
-  const [selectedGroupFromModal, setSelectedGroupFromModal] = useState<ADGroup | null>(null);
-
-  const [isBulkGroupsOpen, setIsBulkGroupsOpen] = useState(false);
-  const [bulkGroupsText, setBulkGroupsText] = useState('');
-  const [bulkGroupsList, setBulkGroupsList] = useState<Array<{ name: string; status: string; scope: string; desc: string }>>([]);
-  const [verifyingBulkGroups, setVerifyingBulkGroups] = useState(false);
-  const [showAdGroups, setShowAdGroups] = useState(import.meta.env.VITE_ENABLE_AD_GROUP_ASSIGNMENT === 'true');
-
-  // --- STEP 3 STATE (PIPELINE RUN) ---
-  const [currentPipelineStep, setCurrentPipelineStep] = useState<number>(1);
-  const [stepsSchema, setStepsSchema] = useState<any[]>([]);
-  const [pipelineStates, setPipelineStates] = useState<Record<string, 'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'>>({});
-  const [pipelineSubStates, setPipelineSubStates] = useState<Record<string, Record<string, 'STANDBY' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'>>>({});
-  const [pipelineState, setPipelineOverallState] = useState<'PROCESSING' | 'DONE' | 'FAILED'>('PROCESSING');
-  const [customTerminalLogs, setTerminalLogs] = useState<string[]>([]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
