@@ -384,6 +384,9 @@ class ActiveDirectoryService:
             groups = custom_attrs.get("groups")
             if groups and isinstance(groups, list):
                 for group in groups:
+                    if group.lower() == "domain users":
+                        continue
+                        
                     group_dn = ""
                     if "," in group:
                         group_dn = group
@@ -398,15 +401,20 @@ class ActiveDirectoryService:
                             )
                             if conn.entries:
                                 group_dn = conn.entries[0].distinguishedName.value
+                            else:
+                                logger.warning(f"Group not found in AD: {group}")
                         except Exception as e:
                             logger.error(f"Error searching group {group}: {e}")
                             
                     if group_dn:
                         try:
-                            conn.modify(group_dn, {'member': [(MODIFY_ADD, [user_dn])]})
-                            logger.info(f"Added user to group: {group_dn}")
+                            # Use Microsoft extension for adding members
+                            if conn.extend.microsoft.add_members_to_groups(user_dn, [group_dn]):
+                                logger.info(f"Added user to group: {group_dn}")
+                            else:
+                                logger.warning(f"Failed to add user to group {group_dn}. Result: {conn.result}")
                         except Exception as grp_err:
-                            logger.warning(f"Failed to add user to group {group_dn}: {grp_err}")
+                            logger.warning(f"Exception while adding user to group {group_dn}: {grp_err}")
             
             return True, user_dn
             
