@@ -128,9 +128,9 @@ app.include_router(api_router, prefix="/api/v1")
 # Mount RQ Dashboard for Redis Queue debugging/monitoring
 os.environ["RQ_DASHBOARD_URL_PREFIX"] = "/rq"
 os.environ["RQ_DASHBOARD_REDIS_URL"] = settings.FAKE_REDIS if settings.SYSTEM_MODE in ["debug", "mock"] else settings.REDIS_URL
-import rq_dashboard.app
+from rq_dashboard.app import create_app
 
-flask_app = rq_dashboard.app.create_app()
+flask_app = create_app()
 
 class PrefixMiddleware:
     def __init__(self, app, prefix=""):
