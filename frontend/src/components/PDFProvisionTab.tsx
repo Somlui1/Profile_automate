@@ -188,6 +188,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
   const [bulkGroupsText, setBulkGroupsText] = useState('');
   const [bulkGroupsList, setBulkGroupsList] = useState<Array<{ name: string; status: string; scope: string; desc: string }>>([]);
   const [verifyingBulkGroups, setVerifyingBulkGroups] = useState(false);
+  const [showAdGroups, setShowAdGroups] = useState(import.meta.env.VITE_ENABLE_AD_GROUP_ASSIGNMENT === 'true');
 
   // --- STEP 3 STATE (PIPELINE RUN) ---
   const [currentPipelineStep, setCurrentPipelineStep] = useState<number>(1);
@@ -1827,56 +1828,73 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                     <h4 className="text-xs uppercase font-black text-primary tracking-wider mb-0">
                       AD Group Memberships
                     </h4>
-                  </div>
-
-                  <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setIsBulkGroupsOpen(true)}
-                      className="flex-1 py-2 px-3 border border-outline-variant text-[11px] font-bold rounded bg-white hover:bg-slate-50 hover:border-slate-400 select-none cursor-pointer duration-100 shrink-0 text-center"
+                      onClick={() => setShowAdGroups(!showAdGroups)}
+                      className="text-[10px] bg-primary/10 text-primary px-2 py-1 rounded font-bold hover:bg-primary/20 cursor-pointer"
                     >
-                      Bulk verify
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleOpenFindGroups}
-                      className="flex-1 py-1.5 px-3 bg-primary text-white text-[11px] font-black uppercase tracking-wider rounded hover:brightness-105 select-none cursor-pointer duration-100 shrink-0 text-center"
-                    >
-                      + Add Group
+                      {showAdGroups ? "Hide Section" : "Unhide Section"}
                     </button>
                   </div>
 
-                  {/* AD list Table */}
-                  <div className="border border-outline-variant rounded bg-white overflow-hidden max-h-48 overflow-y-auto custom-scrollbar px-1">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-[#f5f5f5] text-slate-700 font-semibold sticky top-0 border-b border-[#edebe9]">
-                        <tr>
-                          <th className="p-2.5">Group Title</th>
-                          <th className="p-2.5 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-body text-[11px]">
-                        {adGroupsAssigned.map((group) => (
-                          <tr key={group.name} className="hover:bg-slate-50">
-                            <td className="p-2.5 font-bold text-slate-800">{group.name}</td>
-                            <td className="p-2.5 text-right">
-                              {group.name === "Domain Users" ? (
-                                <span className="text-[10px] text-outline font-semibold italic">Default</span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveGroup(group.name)}
-                                  className="text-error hover:underline text-[10px] font-black uppercase"
-                                >
-                                  Remove
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  {!showAdGroups ? (
+                    <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg text-xs text-orange-800 space-y-1">
+                      <p className="font-bold flex items-center gap-1.5"><AlertTriangle className="h-4 w-4" /> Feature Disabled</p>
+                      <p>Service account ยังไม่มี permission ในการเเอด group ใน user object, รอการปรับ account permission เพื่อให้สามารถใช้ feature นี้ในได้ในอนาคต</p>
+                      <p className="text-[10px] text-orange-600 mt-2 italic">คุณสามารถ enable ค่าเริ่มต้นกลับมาได้โดยกำหนด <code className="bg-orange-100 px-1 rounded">VITE_ENABLE_AD_GROUP_ASSIGNMENT=true</code> ในไฟล์ .env</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsBulkGroupsOpen(true)}
+                          className="flex-1 py-2 px-3 border border-outline-variant text-[11px] font-bold rounded bg-white hover:bg-slate-50 hover:border-slate-400 select-none cursor-pointer duration-100 shrink-0 text-center"
+                        >
+                          Bulk verify
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleOpenFindGroups}
+                          className="flex-1 py-1.5 px-3 bg-primary text-white text-[11px] font-black uppercase tracking-wider rounded hover:brightness-105 select-none cursor-pointer duration-100 shrink-0 text-center"
+                        >
+                          + Add Group
+                        </button>
+                      </div>
+
+                      {/* AD list Table */}
+                      <div className="border border-outline-variant rounded bg-white overflow-hidden max-h-48 overflow-y-auto custom-scrollbar px-1">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-[#f5f5f5] text-slate-700 font-semibold sticky top-0 border-b border-[#edebe9]">
+                            <tr>
+                              <th className="p-2.5">Group Title</th>
+                              <th className="p-2.5 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-body text-[11px]">
+                            {adGroupsAssigned.map((group) => (
+                              <tr key={group.name} className="hover:bg-slate-50">
+                                <td className="p-2.5 font-bold text-slate-800">{group.name}</td>
+                                <td className="p-2.5 text-right">
+                                  {group.name === "Domain Users" ? (
+                                    <span className="text-[10px] text-outline font-semibold italic">Default</span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveGroup(group.name)}
+                                      className="text-error hover:underline text-[10px] font-black uppercase"
+                                    >
+                                      Remove
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* Account & Profile Configuration details */}
@@ -1885,16 +1903,6 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                     <h4 className="text-xs uppercase font-black text-primary tracking-wider mb-0 text-center">
                       Account Parameters
                     </h4>
-                    <label className="relative inline-flex items-center cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={accountEnabled}
-                        onChange={(e) => setAccountEnabled(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-9 h-5 bg-outline-variant rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-secondary shrink-0"></div>
-                      <span className="ml-2 text-[10px] font-bold text-slate-700 uppercase pr-1 select-none">Active</span>
-                    </label>
                   </div>
 
                   <div className="space-y-3.5">
@@ -1948,13 +1956,29 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
 
                     <div className="space-y-2 pt-2 border-t border-outline-variant">
                       <div className="flex items-center justify-between p-2.5 border border-outline-variant bg-white rounded-lg">
+                        <span className="text-[11px] font-bold text-slate-800">เปิดใช้งานบัญชี (Enable Account)</span>
+                        <label className="relative inline-flex items-center cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={accountEnabled}
+                            onChange={(e) => setAccountEnabled(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-outline-variant rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-secondary shrink-0"></div>
+                        </label>
+                      </div>
+
+                      <div className="flex items-center justify-between p-2.5 border border-outline-variant bg-white rounded-lg">
                         <span className="text-[11px] font-bold text-slate-800">เปลี่ยนรหัสผ่านในการล็อกอินครั้งแรก</span>
-                        <input
-                          type="checkbox"
-                          checked={pwdResetOnFirstLogon}
-                          onChange={(e) => setPwdResetOnFirstLogon(e.target.checked)}
-                          className="rounded text-primary focus:ring-primary h-4 w-4 shrink-0"
-                        />
+                        <label className="relative inline-flex items-center cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={pwdResetOnFirstLogon}
+                            onChange={(e) => setPwdResetOnFirstLogon(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-outline-variant rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-secondary shrink-0"></div>
+                        </label>
                       </div>
 
                       <div className="flex items-center justify-between p-2.5 border border-outline-variant bg-primary/5 rounded-lg">
@@ -1962,12 +1986,15 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                           <span className="text-[11px] font-black text-primary uppercase">ส่ง Welcome Email แจ้งรหัสผ่าน</span>
                           <span className="text-[9px] text-outline font-semibold">ส่งแจ้งหัวหน้างานและ Support</span>
                         </div>
-                        <input
-                          type="checkbox"
-                          checked={sendWelcomeEmailToggle}
-                          onChange={(e) => setSendWelcomeEmailToggle(e.target.checked)}
-                          className="rounded text-primary focus:ring-primary h-4 w-4 shrink-0"
-                        />
+                        <label className="relative inline-flex items-center cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={sendWelcomeEmailToggle}
+                            onChange={(e) => setSendWelcomeEmailToggle(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-outline-variant rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-secondary shrink-0"></div>
+                        </label>
                       </div>
                     </div>
                   </div>
