@@ -584,6 +584,15 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     let autoPin = phoneDigits.length >= 6 ? phoneDigits.slice(-6) : phoneDigits;
 
     let ouDN = import.meta.env.VITE_TARGET_OU || "OU=New_employee,DC=aapico,DC=com";
+    
+    let internetVal = 'A';
+    if (web && web.level) {
+      const upper = web.level.toUpperCase();
+      if (upper.includes('A')) internetVal = 'A';
+      else if (upper.includes('B')) internetVal = 'B';
+      else if (upper.includes('C')) internetVal = 'C';
+      else if (upper.includes('D')) internetVal = 'D';
+    }
 
     let defaultGroups: ADGroup[] = [
       { name: "Domain Users", scope: "Global", desc: "Default domain users security group membership" }
@@ -627,7 +636,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
             city: req.address ? "Bang Pa-in" : "",
             state_province: req.address ? "Phranakhon Sri Ayutthaya" : "",
             zip_postal_code: req.zip_code || "13160",
-            country_region: "Thailand"
+            country_region: "Thailand",
+            internet_type: internetVal
           },
           ad_groups: defaultGroups
         },

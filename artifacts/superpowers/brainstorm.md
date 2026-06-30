@@ -1,35 +1,40 @@
+# Brainstorm: Auto-select Internet Level in PDF Provisioning Tab
+
+This document details the investigation and proposed options to resolve the issue where the `Internet Level` is not auto-selecting when parsing `temp/request.pdf`.
+
 ## Goal
-Preserve the form data and state in the PDFProvisionTab when the user navigates away to other tabs and returns.
+Auto-select the correct Internet Level (`A`, `B`, `C`, or `D`) in Step 2 of the frontend provisioning wizard when parsing a PDF.
 
 ## Constraints
-- PDFProvisionTab has a massive amount of local state (useState).
-- Tab switching in App.tsx completely unmounts the previous tab component, wiping its local state.
-- Must not significantly increase the complexity of App.tsx or PDFProvisionTab.tsx.
-- Must perform reasonably fast without causing re-renders across tabs unnecessarily.
+- Must maintain backward compatibility.
+- Must handle variations in PDF output (e.g. `"Level C"`, `"C"`, `"Internet Level C"`).
+- Must safely fallback to default `'A'`.
 
 ## Known context
-- Tab switching logic is in App.tsx (currentTab).
-- PDFProvisionTab component manages state locally (useState).
-- When a user changes tabs, the component is unmounted and local state is lost.
+- `api/services/pdf_service.py` parses `Internet` from PDF and returns `{"request_info": {"internet": {"level": "C", "reason": "..."}}}` (or similar raw values).
+- In `PDFProvisionTab.tsx`, `mapLocalRawToADSchema()` takes the raw response and converts it into the AD mapping payload.
+- However, `mapLocalRawToADSchema()` **does not map** the internet level into the mapped payload's `custom_attributes.internet_type`.
+- Consequently, when `populateFormFromExtractedMap` is called, `attrs.internet_type` is undefined, causing it to fall back to the default `'A'`.
 
 ## Risks
-- Moving all state to App.tsx (Lifting state up) will make App.tsx very messy because PDFProvisionTab has a very large number of state variables.
-- Caching to localStorage / sessionStorage might fail for non-serializable objects (like File objects if any exist), though most states here are simple strings/booleans.
-- Using CSS to hide tabs instead of unmounting them keeps all tabs mounted in the DOM. This can increase background memory usage and cause performance hits if other tabs have heavy background polling.
+- Raw text values of `internet.level` from PDF parser might vary (e.g., `"Level C"`, `"ระดับ C"`, `"C"`). If we do not normalize the parsed text, auto-selection will still fail for some formats.
 
-## Options (2-4)
-1. CSS Display / Hidden instead of Unmounting (Simplest): In App.tsx, instead of conditionally rendering PDFProvisionTab (e.g. {currentTab === 'pdf-provision' && <PDFProvisionTab />}), render all tabs and use className={currentTab === 'pdf-provision' ? 'block' : 'hidden'}. This keeps the component mounted in the DOM, so React retains its state natively.
-2. Global State Management (Zustand): Implement a lightweight global store like zustand. Move all form variables into the store. This cleanly separates the state from the UI component and prevents App.tsx bloat, but requires refactoring all useState calls in PDFProvisionTab.
-3. Lift State Up to Context: Create a PDFProvisionContext wrapping the tabs, so the state lives outside the tab components. When the tab unmounts, the state in the Context remains. When it remounts, it re-hydrates from Context. Requires a lot of boilerplate.
-4. Persist to sessionStorage (useStickyState): Replace useState with a custom hook that writes to sessionStorage on every change and reads from it on mount.
+## Options (2–4)
+
+### Option 1: Normalize and inject `internet_type` in `mapLocalRawToADSchema()` (Recommended)
+Add logic in `mapLocalRawToADSchema()` to check `web.level`, extract the clean character (`A`, `B`, `C`, or `D`), and populate `custom_attributes.internet_type`.
+- **Pros:** Keeps all schema mapping centralized. Extremely robust mapping and normalization.
+- **Cons:** None.
+
+### Option 2: Fallback parsing in `populateFormFromExtractedMap()` directly
+Read `rawJsonOutput` or `mappedJsonOutput` directly inside the form population step and parse it on the fly.
+- **Pros:** Quick fix.
+- **Cons:** Messes up the clean flow where `populateFormFromExtractedMap` only reads from the mapped layout.
 
 ## Recommendation
-Option 1 (CSS Hidden) is highly recommended if you want the fastest, non-invasive change. It requires modifying only App.tsx to conditionally apply display: none rather than unmounting the components. It instantly solves the state loss without having to rewrite dozens of useState lines in PDFProvisionTab.
-
-If keeping all components mounted is too heavy (due to polling or memory), Option 2 (Zustand) is the recommended architectural approach, but will take more time to refactor.
+We recommend **Option 1**. By normalizing the string `web.level` to find `'A'`, `'B'`, `'C'`, or `'D'` and then saving it as `internet_type` inside the `custom_attributes` dictionary, the frontend's mapping pipeline will automatically populate the state properly.
 
 ## Acceptance criteria
-- User can fill out form fields in PDFProvisionTab.
-- User clicks another tab (e.g., Job Queue or M365).
-- User clicks back to the PDF provision tab.
-- All form data in PDFProvisionTab remains exactly as they left it.
+1. Uploading a PDF containing `Internet ระดับ : C` correctly parses the document.
+2. The dropdown in Step 2 automatically selects `'C'`.
+3. Fallback defaults to `'A'` if not found.
