@@ -976,9 +976,9 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
             country_region: country,
             profile_path: profilePath || "",
             logon_script: logonScript || "",
-            change_password_next_logon: true,
-            account_disabled: false,
-            password: "P@ssw0rd$",
+            change_password_next_logon: pwdResetOnFirstLogon,
+            account_disabled: !accountEnabled,
+            password: userPassword,
             user_principal_name: email,
             groups: adGroupsAssigned.map((g) => g.name)
           }
