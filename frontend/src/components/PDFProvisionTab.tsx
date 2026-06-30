@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   DirectoryUser,
   ADGroup,
@@ -180,9 +180,11 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
+  // Email preview mode: 'html' = Outlook-style HTML preview, 'text' = plain text textarea editor
+  const [emailPreviewMode, setEmailPreviewMode] = useState<'html' | 'text'>('html');
+
   useEffect(() => {
     fetchLicenses();
-    fetchEmailTemplate();
     fetchStepsSchema();
     return () => {
       if (eventSourceRef.current) {
@@ -289,48 +291,79 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     }
   };
 
-  const fetchEmailTemplate = async () => {
-    try {
-      const response = await fetch('/static/component/mail_format.txt');
-      if (response.ok) {
-        const text = await response.text();
-        setDefaultEmailTemplate(text);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsLoadingTemplate(false);
+  // renderEmailHtmlPreview: generates Outlook-style HTML preview matching mail_template.html
+  const renderEmailHtmlPreview = useMemo(() => {
+    const supervisorName = managerInput || 'Supervisor';
+    const usernameVal = usernameLogon || `${firstName.toLowerCase()}.${lastName.substring(0, 1).toLowerCase()}`;
+    const emailVal = email || `${usernameVal}@aapico.com`;
+    const passwordVal = userPassword || '';
+    const internetVal = internetType || '';
+    const pinVal = printCode || mobile.replace(/\D/g, '').slice(-6) || '';
+
+    let html = `<p><b>Dear Khun ${supervisorName},</b></p>`;
+    html += `<p>IT dept. would like informed that information as below :</p>`;
+
+    if (usernameVal) {
+      html += `<p>Login Windows<br>`;
+      html += `Username : <b>${usernameVal}</b><br>`;
+      html += `&nbsp;Password :&nbsp;<b>${passwordVal}</b></p>`;
+      html += `<p>First logon you must change password</p>`;
+      html += `<p><span style="color:red;font-size:16px">*</span> Password Policy<br>`;
+      html += `1. Minimum 8 digits<br>`;
+      html += `2. Inclusion of one or more numerical digits (1,2,3,…)<br>`;
+      html += `3. Inclusion of special characters, such as @, #, $<br>`;
+      html += `4. Prohibition of passwords that match the format of username.<br>`;
+      html += `*** <a href="http://intranet.aapico.com/intranet_division/it/manual/Password_Guideline.pdf" style="color:#0563C1;text-decoration:underline">คำแนะนำในการเปลี่ยนรหัสผ่าน Password_Guideline.pdf</a></p>`;
+      html += `<div style="border-top:1px dashed #ccc;margin:15px 0"></div>`;
     }
-  };
 
-  // Compile Dynamic Email Preview
+    if (emailVal) {
+      html += `<p><b>📧 Email: </b><a href="mailto:${emailVal}" style="color:#0563C1;text-decoration:underline">${emailVal}</a></p>`;
+      html += `<div style="border-top:1px dashed #ccc;margin:15px 0"></div>`;
+    }
+
+    if (internetVal) {
+      html += `<p><b>🌐 Internet Access Level:&nbsp;</b>${internetVal}</p>`;
+      html += `<div style="border-top:1px dashed #ccc;margin:15px 0"></div>`;
+    }
+
+    if (pinVal) {
+      html += `<p><b>🖨️ Printer Code:&nbsp;</b>${pinVal}</p>`;
+      html += `<div style="border-top:1px dashed #ccc;margin:15px 0"></div>`;
+    }
+
+    html += `<br>`;
+    html += `<p>Best regards,</p>`;
+    html += `<p>Wajeepradit Prompan (AH)</p>`;
+    html += `<p>--------------------------------------<br>`;
+    html += `AAPICO Hitech&nbsp; Public Co., Ltd.<br>`;
+    html += `99 Moo1, Hitech Industrial Estate,T. Banlane,<br>`;
+    html += `Bang Pa-in, Ayutthaya 13160<br>`;
+    html += `Ext.1234</p>`;
+
+    return html;
+  }, [managerInput, usernameLogon, firstName, lastName, email, userPassword, internetType, printCode, mobile]);
+
+  // Compile Dynamic Email Body & Metadata from form fields (no external template file)
   useEffect(() => {
-    if (!defaultTemplate) return;
-
-    let usernameInput = usernameLogon || `${firstName.toLowerCase()}.${lastName.substring(0, Math.min(2, lastName.length)).toLowerCase()}`;
+    const usernameInput = usernameLogon || `${firstName.toLowerCase()}.${lastName.substring(0, Math.min(2, lastName.length)).toLowerCase()}`;
     const emailParts = email.split('@');
-    const domainStr = emailParts.length > 1 ? emailParts[1] : (company.toLowerCase().replace(/\s+/g, '') + ".com");
+    const domainStr = emailParts.length > 1 ? emailParts[1] : (company.toLowerCase().replace(/\s+/g, '') + '.com');
+    const nameEnglish = displayName || `${firstName} ${lastName}`.trim() || 'New Employee';
+    const companyName = company || 'AAPICO';
+    const supervisorName = managerInput || 'Supervisor';
+    const passwordVal = userPassword;
+    const emailAddr = email || `${usernameInput}@${domainStr}`;
+    const internetVal = internetType || '';
+    const pinVal = printCode || mobile.replace(/\D/g, '').slice(-6) || '';
 
-    const calculatedPin = printCode || mobile.replace(/\D/g, '').slice(-6) || "N/A";
-
-    const fields: Record<string, string> = {
-      supervisor_name: managerInput || "Supervisor",
-      name_english: displayName || `${firstName} ${lastName}`.trim() || 'New Employee',
-      company: company || "AAPICO",
-      username: usernameInput,
-      passwrd: userPassword,
-      domain: domainStr,
-      format_PDF: "Level C",
-      Printer_code: calculatedPin,
-      email: email || `${usernameInput}@${domainStr}`
-    };
-
-    let supervisorEmail = "supervisor@aapico.com";
+    // Compute supervisor email for To field
+    let supervisorEmail = 'supervisor@aapico.com';
     if (managerInput) {
       const mgrLower = managerInput.toLowerCase();
-      if (mgrLower.includes("anek")) supervisorEmail = "anek.p@aapico.com";
-      else if (mgrLower.includes("somsak")) supervisorEmail = "somsak.s@aapico.com";
-      else if (mgrLower.includes("vipha")) supervisorEmail = "vipha.j@aapico.com";
+      if (mgrLower.includes('anek')) supervisorEmail = 'anek.p@aapico.com';
+      else if (mgrLower.includes('somsak')) supervisorEmail = 'somsak.s@aapico.com';
+      else if (mgrLower.includes('vipha')) supervisorEmail = 'vipha.j@aapico.com';
       else {
         const parts = managerInput.trim().split(/\s+/);
         if (parts.length > 1) {
@@ -344,53 +377,58 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
       }
     }
 
-    const lines = defaultTemplate.split('\n');
-    let subject = `New AD Account Created for ${fields.name_english} (${fields.company})`;
-    let toField = supervisorEmail;
-    let ccField = "it.support@aapico.com";
+    // Build plain text email body matching mail_template.html structure
+    let body = `Dear Khun ${supervisorName},\n\n`;
+    body += `IT dept. would like informed that information as below :\n\n`;
 
-    let bodyStartIndex = 0;
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (line.startsWith("To:")) {
-        const parsedTo = line.replace("To:", "").trim().split('#')[0].trim();
-        if (!parsedTo.includes("supervisor.username@aapico.com")) {
-          toField = parsedTo.replace(/\{supervisor_name\}/g, fields.supervisor_name);
-        }
-      } else if (line.startsWith("Cc:")) {
-        ccField = line.replace("Cc:", "").trim().replace(/\{\{ENV_MAIL_CC\}\}/g, "it.support@aapico.com");
-      } else if (line.startsWith("Subject:")) {
-        subject = line.replace("Subject:", "").trim()
-          .replace(/\{name_english\}/g, fields.name_english)
-          .replace(/\{company\}/g, fields.company);
-      } else if (line.trim().startsWith("Dear Khun")) {
-        bodyStartIndex = i;
-        break;
-      }
+    if (usernameInput) {
+      body += `Login Windows\n`;
+      body += `Username : ${usernameInput}\n`;
+      body += ` Password : ${passwordVal}\n\n`;
+      body += `First logon you must change password\n\n`;
+      body += `* Password Policy\n`;
+      body += `1. Minimum 8 digits\n`;
+      body += `2. Inclusion of one or more numerical digits (1,2,3,…)\n`;
+      body += `3. Inclusion of special characters, such as @, #, $\n`;
+      body += `4. Prohibition of passwords that match the format of username.\n`;
+      body += `*** คำแนะนำในการเปลี่ยนรหัสผ่าน: http://intranet.aapico.com/intranet_division/it/manual/Password_Guideline.pdf\n\n`;
+      body += `--------------------------------------\n\n`;
     }
 
-    let rawBodyLines = lines.slice(bodyStartIndex).join('\n');
-    let dynamicBody = rawBodyLines
-      .replace(/@\{\{supervisor_name\}\}/g, fields.supervisor_name)
-      .replace(/\{supervisor_name\}/g, fields.supervisor_name)
-      .replace(/\{name_english\}/g, fields.name_english)
-      .replace(/\{company\}/g, fields.company)
-      .replace(/\{username\}/g, fields.username)
-      .replace(/\{passwrd\}/g, fields.passwrd)
-      .replace(/\{domain\}/g, fields.domain)
-      .replace(/\{format_PDF\}/g, fields.format_PDF)
-      .replace(/\{Printer_code\}/g, fields.Printer_code)
-      .replace(/\{email\}/g, fields.email);
+    if (emailAddr) {
+      body += `📧 Email: ${emailAddr}\n\n`;
+      body += `--------------------------------------\n\n`;
+    }
+
+    if (internetVal) {
+      body += `🌐 Internet Access Level: ${internetVal}\n\n`;
+      body += `--------------------------------------\n\n`;
+    }
+
+    if (pinVal) {
+      body += `🖨️ Printer Code: ${pinVal}\n\n`;
+      body += `--------------------------------------\n\n`;
+    }
+
+    body += `Best regards,\n\n`;
+    body += `Wajeepradit Prompan (AH)\n`;
+    body += `--------------------------------------\n`;
+    body += `AAPICO Hitech  Public Co., Ltd.\n`;
+    body += `99 Moo1, Hitech Industrial Estate,T. Banlane,\n`;
+    body += `Bang Pa-in, Ayutthaya 13160\n`;
+    body += `Ext.1234`;
+
+    const subject = `New AD Account Created for ${nameEnglish} (${companyName})`;
+    const ccField = 'it.support@aapico.com';
 
     if (managerInput !== prevManagerInput) {
       setPrevManagerInput(managerInput);
-      setEmailTo(toField);
+      setEmailTo(supervisorEmail);
     }
     setEmailCc(ccField);
     setEmailSubject(subject);
-    setEmailBody(dynamicBody.trim());
+    setEmailBody(body.trim());
   }, [
-    defaultTemplate,
     firstName,
     lastName,
     displayName,
@@ -401,7 +439,8 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     userPassword,
     mobile,
     printCode,
-    usernameLogon
+    usernameLogon,
+    internetType
   ]);
 
   // Update default print code whenever mobile changes
@@ -585,7 +624,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
 
     let ouDN = import.meta.env.VITE_TARGET_OU || "OU=New_employee,DC=aapico,DC=com";
     
-    let internetVal = 'A';
+    let internetVal = '';
     if (web && web.level) {
       const upper = web.level.toUpperCase();
       if (upper.includes('A')) internetVal = 'A';
@@ -705,7 +744,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     setSelectedDN(import.meta.env.VITE_TARGET_OU || 'OU=New_employee,DC=aapico,DC=com');
     setSelectedNodeName((import.meta.env.VITE_TARGET_OU || 'OU=New_employee,DC=aapico,DC=com').split(',')[0].replace('OU=', '').replace('DC=', ''));
     setPrintCode('');
-    setInternetType('Standard');
+    setInternetType('');
     setMobile('');
     setManagerInput('');
     setDepartment('');
@@ -728,7 +767,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     setSelectedDN(import.meta.env.VITE_TARGET_OU || 'OU=New_employee,DC=aapico,DC=com');
     setSelectedNodeName((import.meta.env.VITE_TARGET_OU || 'OU=New_employee,DC=aapico,DC=com').split(',')[0].replace('OU=', '').replace('DC=', ''));
     setPrintCode('');
-    setInternetType('Standard');
+    setInternetType('');
     setMobile('');
     setPhone('');
     setManagerInput('');
@@ -1943,6 +1982,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                         onChange={(e) => setInternetType(e.target.value)}
                         className="w-full text-xs p-2.5 border border-outline-variant bg-surface-bright rounded outline-none appearance-none"
                       >
+                        <option value=""></option>
                         <option value="A">A</option>
                         <option value="B">B</option>
                         <option value="C">C</option>
@@ -2064,14 +2104,48 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                         </div>
                       </div>
 
-                      {/* Paper-pad layout body container text editor */}
+                      {/* Paper-pad layout body container — dual-mode view */}
                       <div className="p-4 bg-[#f3f2f1] shrink min-h-[300px]">
+                        {/* Mode toggle */}
+                        <div className="flex justify-end mb-2 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setEmailPreviewMode('html')}
+                            className={`px-3 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                              emailPreviewMode === 'html'
+                                ? 'bg-primary text-white shadow-sm'
+                                : 'bg-white text-slate-500 border border-[#edebe9] hover:bg-slate-50'
+                            }`}
+                          >
+                            HTML Preview
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEmailPreviewMode('text')}
+                            className={`px-3 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                              emailPreviewMode === 'text'
+                                ? 'bg-primary text-white shadow-sm'
+                                : 'bg-white text-slate-500 border border-[#edebe9] hover:bg-slate-50'
+                            }`}
+                          >
+                            Plain Text Edit
+                          </button>
+                        </div>
+
                         <div className="max-w-2xl mx-auto border border-[#edebe9] p-6 shadow-sm bg-white min-h-[290px] flex flex-col">
-                          <textarea
-                            value={emailBody}
-                            onChange={(e) => setEmailBody(e.target.value)}
-                            className="w-full flex-grow border-none focus:ring-0 text-xs text-slate-800 leading-relaxed font-body h-64 focus:outline-none outline-none overflow-y-auto custom-scrollbar"
-                          />
+                          {emailPreviewMode === 'html' ? (
+                            <div
+                              className="w-full flex-grow text-sm text-slate-800 leading-relaxed overflow-y-auto custom-scrollbar"
+                              style={{ fontFamily: '"Aptos", "Calibri", sans-serif', fontSize: '14px', color: '#000', lineHeight: '1.5' }}
+                              dangerouslySetInnerHTML={{ __html: renderEmailHtmlPreview }}
+                            />
+                          ) : (
+                            <textarea
+                              value={emailBody}
+                              onChange={(e) => setEmailBody(e.target.value)}
+                              className="w-full flex-grow border-none focus:ring-0 text-xs text-slate-800 leading-relaxed font-body h-64 focus:outline-none outline-none overflow-y-auto custom-scrollbar"
+                            />
+                          )}
                         </div>
                       </div>
                     </div>

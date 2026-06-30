@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: "Aptos", "Calibri", sans-serif; font-size: 14px; color: #000; line-height: 1.5; }
+        .divider { border-top: 1px dashed #ccc; margin: 15px 0; }
+        .red-star { color: red; font-size: 16px; }
+        .link { color: #0563C1; text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <p><b>Dear Khun {{ supervisor_name }},</b></p>
+    <p>IT dept. would like informed that information as below :</p>
+    
+    {% if username %}
+    <p>Login Windows<br>
+    Username : <b>{{ username }}</b><br>
+    &nbsp;Password :&nbsp;<b>{{ password }}</b></p>
+    <p>First logon you must change password</p>
+    
+    <p><span class="red-star">*</span> Password Policy<br>
+    1. Minimum 8 digits<br>
+    2. Inclusion of one or more numerical digits (1,2,3,…)<br>
+    3. Inclusion of special characters, such as @, #, $<br>
+    4. Prohibition of passwords that match the format of username.<br>
+    *** <a class="link" href="http://intranet.aapico.com/intranet_division/it/manual/Password_Guideline.pdf">คำแนะนำในการเปลี่ยนรหัสผ่าน Password_Guideline.pdf</a></p>
+    <div class="divider"></div>
+    {% endif %}
+    
+    {% if email_address %}
+    <p><b>📧 Email: </b><a class="link" href="mailto:{{ email_address }}">{{ email_address }}</a></p>
+    <div class="divider"></div>
+    {% endif %}
+    
+    {% if internet_type %}
+    <p><b>🌐 Internet Access Level:&nbsp;</b>{{ internet_type }}</p>
+    <div class="divider"></div>
+    {% endif %}
+    
+    {% if print_code %}
+    <p><b>🖨️ Printer Code:&nbsp;</b>{{ print_code }}</p>
+    <div class="divider"></div>
+    {% endif %}
+    <br>
+    
+    <p>Best regards,</p>
+    <p>Wajeepradit Prompan (AH)</p>
+    <p>--------------------------------------<br>
+    AAPICO Hitech&nbsp; Public Co., Ltd.<br>
+    99 Moo1, Hitech Industrial Estate,T. Banlane,<br>
+    Bang Pa-in, Ayutthaya 13160<br>
+    Ext.1234</p>
+</body>
+</html>

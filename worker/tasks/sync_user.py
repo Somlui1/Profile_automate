@@ -466,18 +466,47 @@ def run_m365_license_task(job_id: str, payload: dict):
 
 # Step 4: Email Notification Task
 def _execute_send_email(job_id: str, payload: dict):
+    from services.email_service import email_service
+
     email_profile = payload.get("task_data", {}).get("email_profile", {})
     email_to = email_profile.get("emailTo")
     email_cc = email_profile.get("emailCc")
     email_subject = email_profile.get("emailSubject")
     email_body = email_profile.get("emailBody")
-    
-    add_log(job_id, "send_email", "running", f"Sending onboarding email notification to: {email_to}", metadata={"sub_step": "send", "sub_step_status": "running"})
-    
-    # SMTP email dispatch simulation
-    time.sleep(1)
-    add_log(job_id, "send_email", "running", "Email dispatched to SMTP server.", metadata={"sub_step": "send", "sub_step_status": "success"})
-    add_log(job_id, "send_email", "success", f"Email notification successfully sent to {email_to} (CC: {email_cc})", metadata={"sub_step": "complete", "sub_step_status": "success"})
+
+    # Validate: emailBody must be provided from the frontend payload
+    if not email_body or not email_body.strip():
+        raise Exception(
+            "emailBody is required in payload when send_email is enabled. "
+            "The email body must be provided from the frontend."
+        )
+
+    add_log(job_id, "send_email", "running",
+            f"Sending welcome email to: {email_to}",
+            metadata={"sub_step": "send", "sub_step_status": "running"})
+
+    success = email_service.send_email(
+        to_email=email_to,
+        subject=email_subject,
+        email_body=email_body,
+        cc_email=email_cc
+    )
+
+    if success:
+        add_log(job_id, "send_email", "running",
+                "Email dispatched to SMTP server.",
+                metadata={"sub_step": "send", "sub_step_status": "success"})
+        add_log(job_id, "send_email", "success",
+                f"Email notification successfully sent to {email_to} (CC: {email_cc})",
+                metadata={"sub_step": "complete", "sub_step_status": "success"})
+    else:
+        add_log(job_id, "send_email", "success",
+                "SMTP config not available — email dispatch skipped",
+                metadata={"sub_step": "send", "sub_step_status": "success"})
+        add_log(job_id, "send_email", "success",
+                f"Email step completed (SMTP unavailable) for {email_to}",
+                metadata={"sub_step": "complete", "sub_step_status": "success"})
 
 def run_send_email_task(job_id: str, payload: dict):
     _run_step("send_email", job_id, payload, _execute_send_email)
+

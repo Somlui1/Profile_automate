@@ -1,40 +1,46 @@
-# Brainstorm: Auto-select Internet Level in PDF Provisioning Tab
+# Brainstorm: Frontend Email Editor and Backend Dispatch Integration
 
-This document details the investigation and proposed options to resolve the issue where the `Internet Level` is not auto-selecting when parsing `temp/request.pdf`.
+วิเคราะห์แนวทางการส่งเนื้อหาอีเมล (Email Body) ที่ผ่านการจัดแต่งหรือแก้ไขจากหน้าจอ Frontend (Step 2 ใน PDFProvisionTab) ไปยัง Backend Worker เพื่อทำการจัดส่ง และแนวทางการแก้ปัญหาที่เกี่ยวข้อง
 
 ## Goal
-Auto-select the correct Internet Level (`A`, `B`, `C`, or `D`) in Step 2 of the frontend provisioning wizard when parsing a PDF.
+ออกแบบกลไกให้ระบบ Asynchronous Worker สามารถรับและจัดส่งจดหมายต้อนรับพนักงานใหม่โดยอ้างอิงเนื้อหาข้อความจริงที่ผู้ใช้งานได้แก้ไขผ่านช่องทางกล่องข้อความบนหน้าจอฟรอนต์เอนด์ได้อย่างถูกต้องสมบูรณ์
 
 ## Constraints
-- Must maintain backward compatibility.
-- Must handle variations in PDF output (e.g. `"Level C"`, `"C"`, `"Internet Level C"`).
-- Must safely fallback to default `'A'`.
+- **Format Preservation**: เนื่องจากกล่องพิมพ์ข้อความบนหน้าจอเป็น `<textarea>` (Plain Text) ข้อมูลที่ส่งมาจะมีอักขระเว้นวรรคและอักขระขึ้นบรรทัดใหม่ (`\n`) ระบบส่งอีเมลต้องสามารถแสดงผลข้อความเหล่านี้แยกบรรทัดกันได้อย่างถูกต้องตามต้นฉบับ
+- **Fallback Capability**: ในกรณีที่ไม่มีเนื้อหา `emailBody` ส่งมาจาก API (เช่น การยิงทดสอบระบบหรือระบบ Provision อัตโนมัติในอนาคต) แบ็กเอนด์ต้องสามารถสร้างและส่งข้อความตามเทมเพลตเริ่มต้น (Jinja2 Render) ได้ตามปกติ
+- **SMTP Gateway**: ระบบจัดส่งจริงทำงานในเลเยอร์ของเวิร์กเกอร์ (Asynchronous) ซึ่งไม่ได้ติดต่อโดยตรงกับ UI ดังนั้นข้อมูลการแก้ไขต้องส่งผ่านทาง JSON Payload เท่านั้น
 
 ## Known context
-- `api/services/pdf_service.py` parses `Internet` from PDF and returns `{"request_info": {"internet": {"level": "C", "reason": "..."}}}` (or similar raw values).
-- In `PDFProvisionTab.tsx`, `mapLocalRawToADSchema()` takes the raw response and converts it into the AD mapping payload.
-- However, `mapLocalRawToADSchema()` **does not map** the internet level into the mapped payload's `custom_attributes.internet_type`.
-- Consequently, when `populateFormFromExtractedMap` is called, `attrs.internet_type` is undefined, causing it to fall back to the default `'A'`.
+- หน้าฟรอนต์เอนด์ [PDFProvisionTab.tsx](file:///c:/Users/wajeepradit.p/git/profile_automate/frontend/src/components/PDFProvisionTab.tsx) มีกล่องพรีวิวและช่องแก้ไขข้อความขนาดใหญ่สำหรับ `emailTo`, `emailCc`, `emailSubject`, และ `emailBody`
+- เมื่อผู้ใช้กดยืนยันเพื่อรันคิว ฟรอนต์เอนด์จะแพ็คข้อมูลชุดนี้ลงไปใน `task_data.email_profile` ภายใต้ชื่อ `emailBody` และยิงไปที่ Endpoint `/api/v1/jobs/sync`
+- แต่ตัวช่วยส่งอีเมล `email_service.py` ของเดิมกำหนดพารามิเตอร์ของ `send_email` ให้รับเพียงข้อมูลดิบและทำการเรนเดอร์ทับด้วย `mail_template.html` ผ่าน Jinja2 เสมอ ซึ่งส่งผลให้จดหมายที่ผู้ใช้อุตส่าห์พิมพ์แก้บนหน้าเว็บสูญหายไป
 
 ## Risks
-- Raw text values of `internet.level` from PDF parser might vary (e.g., `"Level C"`, `"ระดับ C"`, `"C"`). If we do not normalize the parsed text, auto-selection will still fail for some formats.
+- **ข้อความติดกันเป็นพืด**: หากนำ `emailBody` ที่เป็น Plain Text ไปแนบเป็น HTML อีเมลโดยตรงโดยไม่ได้เปลี่ยนตัวขึ้นบรรทัดใหม่ (`\n`) ให้กลายเป็นแท็ก HTML `<br>` โปรแกรมอ่านอีเมล (เช่น Outlook) จะแสดงผลข้อความยาวต่อเนื่องกันโดยไม่มีการขึ้นบรรทัดใหม่
+- **ความผิดเพี้ยนของฟอนต์**: การส่ง Plain Text อีเมลเปล่าๆ อาจทำให้ฟอนต์แสดงผลไม่สอดคล้องกับภาพลักษณ์องค์กร (ต่างจากเทมเพลตเดิมที่เป็นฟอนต์ Aptos/Calibri สวยงาม)
 
 ## Options (2–4)
 
-### Option 1: Normalize and inject `internet_type` in `mapLocalRawToADSchema()` (Recommended)
-Add logic in `mapLocalRawToADSchema()` to check `web.level`, extract the clean character (`A`, `B`, `C`, or `D`), and populate `custom_attributes.internet_type`.
-- **Pros:** Keeps all schema mapping centralized. Extremely robust mapping and normalization.
-- **Cons:** None.
+### Option 1: เวิร์กเกอร์ส่งเป็น Plain Text อีเมลโดยตรง
+- **ลักษณะ**: เวิร์กเกอร์นำ `emailBody` จาก payload มาสร้างเป็น MIMEText ประเภท `plain` (`MIMEText(body, 'plain', 'utf-8')`) 
+- **ข้อดี**: ดำเนินการง่ายที่สุด, ตัวอักษรและบรรทัดแสดงผลตรงตามที่พิมพ์หน้าเว็บแน่นอน 100%
+- **ข้อเสีย**: จดหมายจะไม่มีไฮเปอร์ลิงก์ที่คลิกได้และไม่มีรูปแบบตัวหนาหรือการตกแต่งสไตล์ใดๆ
 
-### Option 2: Fallback parsing in `populateFormFromExtractedMap()` directly
-Read `rawJsonOutput` or `mappedJsonOutput` directly inside the form population step and parse it on the fly.
-- **Pros:** Quick fix.
-- **Cons:** Messes up the clean flow where `populateFormFromExtractedMap` only reads from the mapped layout.
+### Option 2: เวิร์กเกอร์แปลง `\n` เป็น `<br>` และส่งเป็น HTML ภายใต้ CSS Container (แนะนำ)
+- **ลักษณะ**: เวิร์กเกอร์นำ `emailBody` มาแปลงเครื่องหมายขึ้นบรรทัดใหม่ทั้งหมดด้วย `.replace("\n", "<br>")` จากนั้นนำไปห่อหุ้มใน wrapper HTML โครงสร้างฟอนต์ Aptos/Calibri เพื่อส่งเป็น HTML อีเมล
+- **ข้อดี**: สวยงาม สะอาดตา ลิงก์ต่างๆ (เช่น URL สำหรับเปลี่ยนรหัสผ่าน) จะกลายเป็นลิงก์ที่คลิกได้ และสามารถจัดหน้าได้ใกล้เคียงกับพรีวิวของ Outlook
+- **ข้อเสีย**: ต้องจัดการข้อความที่มีการเข้ารหัสอักขระพิเศษไม่ให้แสดงผลเพี้ยน
+
+### Option 3: ใช้ Rich Text Editor บนฟรอนต์เอนด์และส่ง HTML ตรง
+- **ลักษณะ**: ปรับปรุงหน้าจอ Step 2 ให้มีปุ่มปรับแต่ง Rich Text (ตัวหนา, ตัวเอียง, ลิงก์) และส่งค่าออกไปเป็น HTML ดิบ
+- **ข้อดี**: ได้เนื้อหาที่มีลวดลายซับซ้อนตามใจชอบ
+- **ข้อเสีย**: มีความซับซ้อนในการติดตั้งไลบรารีเพิ่ม และจัดการความปลอดภัยเรื่อง HTML injection บนเซิร์ฟเวอร์ยากขึ้น
 
 ## Recommendation
-We recommend **Option 1**. By normalizing the string `web.level` to find `'A'`, `'B'`, `'C'`, or `'D'` and then saving it as `internet_type` inside the `custom_attributes` dictionary, the frontend's mapping pipeline will automatically populate the state properly.
+**เลือก Option 2 (แปลงข้อความและส่งเป็น HTML ภายใต้สไตล์ Aptos)** 
+ปรับแต่ง `email_service.py` และ `sync_user.py` ให้รองรับรูปแบบการทำงานนี้โดยเพิ่มทางเลือกว่าหากมีคีย์ `emailBody` ใน payload ให้ใช้ค่านั้นเป็นหลัก แปลง `\n` เป็น `<br>` แล้วจัดส่ง และหากไม่มีจึงจะถอยกลับไปใช้ Jinja2 เรนเดอร์ไฟล์เทมเพลต
 
 ## Acceptance criteria
-1. Uploading a PDF containing `Internet ระดับ : C` correctly parses the document.
-2. The dropdown in Step 2 automatically selects `'C'`.
-3. Fallback defaults to `'A'` if not found.
+1. ฟังก์ชันจัดส่งจดหมายบนแบ็กเอนด์ต้องนำข้อมูลจากตัวแปร `emailBody` ของ payload ที่มาจากการกรอกของหน้าจอมาใช้เป็นเนื้อหาจดหมายหลักเพื่อจัดส่งผ่าน SMTP
+2. ตัวอักษรขึ้นบรรทัดใหม่จากกล่อง textarea ในฟรอนต์เอนด์ต้องเว้นวรรคขึ้นบรรทัดใหม่อย่างถูกต้องบนโปรแกรมอ่านอีเมลปลายทาง
+3. ความสามารถในการประกอบร่างอีเมลผ่าน Jinja2 Template บนเซิร์ฟเวอร์ยังต้องทำงานได้อยู่เมื่อเรียกใช้โดยไม่มีการส่ง `emailBody` เข้ามาใน payload
