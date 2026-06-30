@@ -1466,7 +1466,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                       <button
                         type="button"
                         onClick={() => setDisplayName(`${firstName} ${lastName}`.trim())}
-                        className="px-3 bg-primary text-on-primary font-white uppercase rounded text-[10px] tracking-widest hover:bg-primary-container cursor-pointer transition-colors shrink-0 h-10"
+                        className="px-3 bg-primary text-white font-black uppercase rounded text-[10px] tracking-widest hover:bg-primary-container cursor-pointer transition-colors shrink-0 h-10"
                       >
                         Auto-generate
                       </button>
