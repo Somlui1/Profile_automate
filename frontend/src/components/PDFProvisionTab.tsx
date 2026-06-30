@@ -124,6 +124,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     phone, setPhone,
     mobile, setMobile,
     printCode, setPrintCode,
+    internetType, setInternetType,
     street, setStreet,
     city, setCity,
     stateName, setStateName,
@@ -659,6 +660,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     setManagerInput(attrs.manager || '');
     setMobile(attrs.mobile || '');
     setPrintCode(pc.print_code || '');
+    setInternetType(attrs.internet_type || 'Standard');
 
     setStreet(attrs.street || '');
     setCity(attrs.city || 'Bang Pa-in');
@@ -693,6 +695,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     setSelectedDN(import.meta.env.VITE_TARGET_OU || 'OU=New_employee,DC=aapico,DC=com');
     setSelectedNodeName((import.meta.env.VITE_TARGET_OU || 'OU=New_employee,DC=aapico,DC=com').split(',')[0].replace('OU=', '').replace('DC=', ''));
     setPrintCode('');
+    setInternetType('Standard');
     setMobile('');
     setManagerInput('');
     setDepartment('');
@@ -715,6 +718,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
     setSelectedDN(import.meta.env.VITE_TARGET_OU || 'OU=New_employee,DC=aapico,DC=com');
     setSelectedNodeName((import.meta.env.VITE_TARGET_OU || 'OU=New_employee,DC=aapico,DC=com').split(',')[0].replace('OU=', '').replace('DC=', ''));
     setPrintCode('');
+    setInternetType('Standard');
     setMobile('');
     setPhone('');
     setManagerInput('');
@@ -959,6 +963,7 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
             account_disabled: !accountEnabled,
             password: userPassword,
             user_principal_name: email,
+            internet_type: internetType,
             groups: adGroupsAssigned.map((g) => g.name)
           }
         },
@@ -1919,6 +1924,19 @@ export const PDFProvisionTab: React.FC<PDFProvisionTabProps> = ({
                         placeholder="\\server\profiles\%username%"
                         className="w-full text-xs p-2.5 border border-outline-variant bg-surface-bright rounded outline-none"
                       />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-slate-500">Internet Access Level</label>
+                      <select
+                        value={internetType}
+                        onChange={(e) => setInternetType(e.target.value)}
+                        className="w-full text-xs p-2.5 border border-outline-variant bg-surface-bright rounded outline-none appearance-none"
+                      >
+                        <option value="Standard">Standard</option>
+                        <option value="Full Access">Full Access</option>
+                        <option value="No Access">No Access</option>
+                      </select>
                     </div>
 
                     <div className="space-y-1">

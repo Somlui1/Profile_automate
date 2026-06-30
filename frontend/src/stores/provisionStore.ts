@@ -45,6 +45,8 @@ interface ProvisionState {
   setMobile: (val: string) => void;
   printCode: string;
   setPrintCode: (val: string) => void;
+  internetType: string;
+  setInternetType: (val: string) => void;
 
   street: string;
   setStreet: (val: string) => void;
@@ -207,6 +209,8 @@ export const useProvisionStore = create<ProvisionState>((set) => ({
   setMobile: (val) => set({ mobile: val }),
   printCode: '',
   setPrintCode: (val) => set({ printCode: val }),
+  internetType: 'Standard',
+  setInternetType: (val) => set({ internetType: val }),
 
   street: '',
   setStreet: (val) => set({ street: val }),
@@ -340,6 +344,7 @@ export const useProvisionStore = create<ProvisionState>((set) => ({
     stateName: '',
     zipCode: '',
     country: 'Thailand',
+    internetType: 'Standard',
     company: '',
     department: '',
     jobTitle: '',

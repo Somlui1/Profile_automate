@@ -105,6 +105,24 @@ class Settings:
     JOB_LOG_RETENTION_DAYS: int = int(os.getenv("JOB_LOG_RETENTION_DAYS", "30"))
     JOB_CANCEL_ROLLBACK_AD: bool = os.getenv("JOB_CANCEL_ROLLBACK_AD", "true").lower() == "true"
     
+    # Email / SMTP Configuration
+    SMTP_GATEWAY_URL: str = os.getenv("SMTP_GATEWAY_URL", "")
+    
+    @property
+    def SMTP_CONFIG(self) -> dict:
+        """Parse SMTP_GATEWAY_URL into host, port, user, password"""
+        if not self.SMTP_GATEWAY_URL:
+            return {}
+        from urllib.parse import urlparse, unquote
+        parsed = urlparse(self.SMTP_GATEWAY_URL)
+        return {
+            "host": parsed.hostname,
+            "port": parsed.port or 25,
+            "username": unquote(parsed.username) if parsed.username else None,
+            "password": unquote(parsed.password) if parsed.password else None,
+            "scheme": parsed.scheme
+        }
+    
     # Database Configuration
     DB_PATH: str = os.getenv("DB_PATH", os.path.abspath(os.path.join(base_dir, "data", "jobs.db")))
     
